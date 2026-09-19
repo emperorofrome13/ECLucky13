@@ -1,0 +1,11 @@
+import fs from 'node:fs';
+const f='src/components/Ec12App.tsx';let s=fs.readFileSync(f,'utf8');
+s=s.replace("const [browseBusy, setBrowseBusy] = useState(false);", "const [browseBusy, setBrowseBusy] = useState(false);\n  const [workspaceOpen, setWorkspaceOpen] = useState(false);\n  const [workspacePath, setWorkspacePath] = useState('');");
+const begin=s.indexOf('onClick={async () => { setBrowseBusy(true);',s.indexOf('<header'));
+const end=s.indexOf(' title={settings.workspace.path',begin);
+if(begin<0||end<0)throw Error('workspace button missing');
+s=s.slice(0,begin)+"onClick={() => { setWorkspacePath(settings.workspace.path); setWorkspaceOpen(true); }}"+s.slice(end);
+s=s.replace("{settingsOpen && (", `{workspaceOpen && <><div className="drawer-backdrop" onClick={() => setWorkspaceOpen(false)} /><div className="drawer" role="dialog" aria-label="Choose workspace"><div className="drawer-head"><b>Choose workspace</b><button className="btn" onClick={() => setWorkspaceOpen(false)}>Cancel</button></div><div className="drawer-body"><label htmlFor="workspace-path">Project folder</label><input id="workspace-path" value={workspacePath} onChange={(e) => setWorkspacePath(e.target.value)} placeholder="E:\\projects\\my-app" /><button className="btn" disabled={browseBusy} onClick={browseNative}>Browse…</button><button className="btn primary" disabled={!workspacePath.trim() || running} onClick={async () => { try { const d = await fetch('/api/workspaces', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: workspacePath }) }).then((r) => r.json()); if (!d.ok) { setError(d.error || 'Could not open folder.'); return; } newSession(); setSettings((s) => ({ ...s, workspace: { id: d.workspace.id, path: d.workspace.path } })); setWorkspaceOpen(false); } catch { setError('Could not open the folder. Check the path and try again.'); } }}>Open folder</button></div></div></>}
+      {settingsOpen && (`);
+s=s.replace("if (dd.ok) setSettings((s) => ({ ...s, workspace: { id: dd.workspace.id, path: dd.workspace.path } }));", "if (dd.ok) { newSession(); setSettings((s) => ({ ...s, workspace: { id: dd.workspace.id, path: dd.workspace.path } })); setWorkspaceOpen(false); }");
+fs.writeFileSync(f,s);

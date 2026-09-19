@@ -1,0 +1,27 @@
+# ECLucky13 - never commit these
+# Runtime data: sessions, runs, credentials (API keys!), attachments, MCP servers
+data/
+# Local backups of pre-edit files
+backup/
+# Test evidence: screenshots, logs, browser output
+test-output/
+# Installed dependencies (quickstart.bat installs these)
+node_modules/
+# Build output (quickstart.bat rebuilds when src is newer)
+.next/
+.next-build/
+# npm cache
+.npm-cache
+# Cloned third-party MCP servers (npm run install:mcp fetches these)
+vendor/
+# Scratch verification workspaces
+workspace-test/
+# Logs and editor temps
+*.log
+~$*
+.DS_Store
+Thumbs.db
+# TypeScript incremental state
+tsconfig.tsbuildinfo
+# Local env overrides (never commit keys)
+.env*

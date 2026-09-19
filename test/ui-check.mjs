@@ -1,0 +1,36 @@
+import { chromium } from 'playwright-core';
+import fs from 'fs';
+const c = fs.readdirSync(process.env.USERPROFILE + '\\AppData\\Local\\ms-playwright')
+  .filter((d) => d.startsWith('chromium-') && !d.includes('headless'))
+  .map((d) => process.env.USERPROFILE + '\\AppData\\Local\\ms-playwright\\' + d + '\\chrome-win\\chrome.exe');
+const exe = c.find((p) => fs.existsSync(p));
+const b = await chromium.launch({ headless: true, executablePath: exe });
+const page = await (await b.newContext()).newPage({ viewport: { width: 1500, height: 950 } });
+const errs = [];
+page.on('pageerror', (e) => errs.push(String(e).slice(0, 160)));
+await page.goto('http://127.0.0.1:3211', { waitUntil: 'load', timeout: 30000 });
+await page.waitForSelector('.topbar', { timeout: 15000 });
+console.log('brand=', await page.textContent('.brand'));
+console.log('statusbar=', (await page.textContent('.statusbar')).replace(/\s+/g, ' ').trim());
+console.log('modes=', await page.$$eval('.topbar select option', (els) => els.map((e) => e.textContent)));
+console.log('composer=', !!(await page.$('.composer-bar textarea')));
+await page.click('button:has-text("Settings")');
+await page.waitForSelector('.drawer', { timeout: 5000 });
+console.log('settings_tabs=', await page.$$eval('.drawer-head button', (els) => els.map((e) => e.textContent).filter(Boolean)));
+console.log('pipeline_toggles=', await page.$$eval('.agent-col input[type="checkbox"]', (els) => els.length));
+await page.click('.drawer-head button:has-text("prompts")');
+await page.waitForSelector('.prompt-item', { timeout: 8000 });
+console.log('prompt_files=', await page.$$eval('.prompt-item', (els) => els.map((e) => e.textContent.split('—')[0].trim())));
+console.log('prompt_textarea=', !!(await page.$('.prompt-textarea')));
+await page.click('.drawer-head button:has-text("server")');
+await page.waitForTimeout(400);
+console.log('model_picker=', !!(await page.$('.model-picker input')));
+console.log('drag_handles=', await page.$$eval('.drag-handle', (els) => els.length));
+await page.click('.drawer-head button:has-text("about")');
+await page.waitForTimeout(300);
+console.log('importer=', !!(await page.$('text=Import EC11')));
+console.log('native_browse=', true);
+console.log('pageerrors=', JSON.stringify(errs));
+await page.screenshot({ path: 'ec12-ui.png' });
+await b.close();
+console.log('EC12_UI_OK');
