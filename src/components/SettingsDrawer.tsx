@@ -206,7 +206,7 @@ export default function SettingsDrawer(props: {
                 <div className="field">
                   <label>Theme</label>
                   <select value={settings.theme} onChange={(e) => onChange({ ...settings, theme: e.target.value })}>
-                    {['neon', 'amber', 'red', 'matrix', 'ice', 'mono'].map((t) => <option key={t} value={t}>{t}</option>)}
+                    {['neon', 'amber', 'red', 'matrix', 'ice', 'mono', 'lucky'].map((t) => <option key={t} value={t}>{t === 'lucky' ? 'lucky (craps + live odds)' : t}</option>)}
                   </select>
                 </div>
               </fieldset>

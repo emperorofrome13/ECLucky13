@@ -14,8 +14,9 @@ import TerminalPanel from './TerminalPanel';
 import MessageContent, { CopyButton } from './MessageContent';
 import AttachmentList, { recordAttachments, type UIAttachment } from './AttachmentList';
 import TaskBoard, { type TaskRun, isActiveTask } from './TaskBoard';
+import LuckyPanel from './LuckyPanel';
 
-export const APP_VERSION = '1.25';
+export const APP_VERSION = '1.26';
 const SKEY = 'eclucky13.settings.v1';
 
 function newId(p: string) { return p + '_' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36); }
@@ -660,7 +661,7 @@ interface RequestRow { eventId: string; requestId: string; at: number; messageCo
   const cost = useMemo(() => (usage.promptTokens / 1e6) * (settings.provider.inputCostPer1M || 0) + (usage.completionTokens / 1e6) * (settings.provider.outputCostPer1M || 0), [usage, settings.provider]);
   const selectedRecord = changes.find((c) => c.changeId === selectedChange);
   const diffForSelected = selectedRecord ? diffs[selectedRecord.changeId] : undefined;
-  const cols = `${leftOpen ? leftW + 'px 6px ' : ''}minmax(0,1fr)${inspectorOpen ? ' 6px ' + rightW + 'px' : ''}`;
+  const cols = `${settings.theme === 'lucky' ? '236px ' : ''}${leftOpen ? leftW + 'px 6px ' : ''}minmax(0,1fr)${inspectorOpen ? ' 6px ' + rightW + 'px' : ''}`;
   const selectChange = async (id: string) => {
     setSelectedChange(id); setDiffError('');
     const generation = runGeneration.current;
@@ -799,6 +800,7 @@ interface RequestRow { eventId: string; requestId: string; at: number; messageCo
       </div>
 
       <div className={"workbench" + (leftOpen ? " with-sidebar" : "")} style={{ gridTemplateColumns: cols }}>
+        {settings.theme === 'lucky' && <LuckyPanel />}
         {leftOpen && <aside className="leftpanel" aria-label="Workspace sidebar">
           <div className="tp-bar" aria-hidden="true"><span className="gly">◆</span> Workspace<span className="grip" /></div>
           <div className="sidebar-tabs" role="tablist" aria-label="Workspace panels">

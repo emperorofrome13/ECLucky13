@@ -1,8 +1,33 @@
 # ECLucky13 — HANDOFF
 
-**Current version:** v1.25 (package 1.0.25)
+**Current version:** v1.26 (package 1.0.26)
 **Date:** 2026-09-20
-**Status:** Turn budget is warn-only (no force-stop) per decision. Supersedes v1.24 for budget behavior.
+**Status:** Lucky theme (craps + live odds) shipped. Supersedes v1.25.
+
+## v1.26 lucky theme (this increment)
+
+- New `lucky` theme (Settings > Appearance > "lucky (craps + live odds)"): felt-green +
+  gold palette, left rail with a decorative craps dice roller (local random, call names
+  2-12, no wagers anywhere) and live prediction-market odds.
+- Odds are public keyless APIs proxied server-side: `GET /api/markets`
+  (`src/app/api/markets/route.ts`) merges Kalshi (`with_nested_markets`, `*_dollars`
+  price fields) + Polymarket Gamma (JSON-encoded `outcomes`/`outcomePrices` arrays),
+  90s server cache, 8s per-venue timeout, graceful degrade. Panel polls every 90s.
+- Files: api/markets/route.ts (new), components/LuckyPanel.tsx (new),
+  app/globals.css (`[data-theme="lucky"]` + rail/dice/odds styles), Ec12App.tsx (rail
+  column + render when theme is lucky), SettingsDrawer.tsx (theme option).
+  Scratch verifier: `test-output/lucky-verify.mjs` (ignored).
+
+## Verification evidence (v1.26)
+
+- `npm.cmd run typecheck -- --incremental false`: PASS.
+- `npm.cmd test`: **179/179**.
+- `npm.cmd run build`: PASS.
+- Live isolated prod (3319): `/api/markets` → ok:true, 16 markets (8 Kalshi priced 8/8,
+  8 Polymarket); browser run: rail present, 2 dice, 14 odds rows, `data-theme=lucky`,
+  roll → "5 — Fever five", zero page errors. Screenshot:
+  `C:/Users/emper/AppData/Local/Temp/opencode/lucky-theme.png`.
+- NOTE: relaunch quickstart to serve v1.26 (auto-rebuilds).
 
 ## v1.25 warn-only budget (this increment)
 
@@ -20,6 +45,12 @@
 - `npm.cmd test`: **179/179**.
 - `npm.cmd run build`: PASS, Next 14.2.35.
 - `node test/lucky-ui.mjs` (isolated dev 3314): **9/9**.
+- **A/B toggle test** (isolated prod 3320, same micro-task, autoprompts off): OFF = 19 reqs,
+  70.9k in (45.3k cached, 64%), 3.1k out · ON = 14 reqs, 45.1k in (33.8k cached, 75%),
+  2.3k out. Both outputs verified correct by execution. Finding: OpenRouter auto-caches
+  stable prefixes WITHOUT breakpoints (OFF still 64% cached), so the toggle's marginal
+  cache gain looks like ~+11pts; the diet preset matters more at long-history scale.
+  Evidence: `E:/test-output/grade-ab-2026-09-20/` (harness: `grade-harness/micro-task.md`).
 - NOTE: relaunch quickstart to serve v1.25 (auto-rebuilds).
 
 ## v1.24 saver bundle (superseded above for budget behavior)
