@@ -1,0 +1,34 @@
+appId: com.eclucky13.app
+productName: ECLucky13
+asar: true
+directories:
+  output: dist
+files:
+  - main.js
+  - package.json
+  - assets/
+extraResources:
+  - from: ../package.json
+    to: app-source/package.json
+  - from: ../package-lock.json
+    to: app-source/package-lock.json
+  - from: ../next.config.js
+    to: app-source/next.config.js
+  - from: ../tsconfig.json
+    to: app-source/tsconfig.json
+  - from: ../scripts
+    to: app-source/scripts
+  - from: ../src
+    to: app-source/src
+  - from: ../autoprompts
+    to: app-source/autoprompts
+  - from: ../docs
+    to: app-source/docs
+win:
+  target: nsis
+  artifactName: ECLucky13-Setup-${version}.exe
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  shortcutName: ECLucky13

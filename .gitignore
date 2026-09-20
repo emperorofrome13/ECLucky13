@@ -23,5 +23,8 @@ workspace-test/
 Thumbs.db
 # TypeScript incremental state
 tsconfig.tsbuildinfo
+# Desktop shell build output (npm run package builds these)
+desktop/node_modules/
+desktop/dist/
 # Local env overrides (never commit keys)
 .env*

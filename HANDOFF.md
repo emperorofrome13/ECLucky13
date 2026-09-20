@@ -29,6 +29,24 @@
   `C:/Users/emper/AppData/Local/Temp/opencode/lucky-theme.png`.
 - NOTE: relaunch quickstart to serve v1.26 (auto-rebuilds).
 
+## Desktop shell (v1.26, same app version)
+
+- `desktop/` is an Electron shell in the opencode-desktop shape (native window +
+  tray + server lifecycle, no system Node needed at runtime): first launch copies the
+  app source to `%LOCALAPPDATA%\ECLucky13\app`, runs full `npm install` + `npm run build`
+  in a progress window, then starts the server under Electron's Node
+  (`ELECTRON_RUN_AS_NODE`) and opens the window. Tray: open, restart server, data
+  folder, start-with-Windows, quit. Dice icon generated from the theme
+  (`desktop/assets/`). `npm start` runs from source; `npm run package` builds the
+  per-user NSIS installer.
+- Two real bugs found by headless testing and fixed: build must run with
+  `EC12_DIST_DIR=.next-build`, and the install must be full (Next resolves the `@/*`
+  alias through TypeScript, so `--omit=dev` breaks the build). Setup log:
+  `%APPDATA%\ECLucky13\desktop-shell.log`.
+- Verified: shell boots the server (HTTP 200 on isolated 3399), window loads the app,
+  no shell errors. `npm test`: **179/179** serial (one timing test flakes under
+  parallel load; passes 10/10 alone and 179/179 with `--test-concurrency=1`).
+
 ## v1.25 warn-only budget (this increment)
 
 - The v1.24 force-stop (warn at N, `blocked` at N+5) is removed: the turn budget now warns

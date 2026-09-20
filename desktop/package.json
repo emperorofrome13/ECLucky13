@@ -1,0 +1,14 @@
+{
+  "name": "eclucky13-desktop",
+  "version": "1.0.26",
+  "description": "ECLucky13 desktop shell (Electron): native window, tray, first-run setup, server lifecycle.",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "package": "electron-builder --win nsis"
+  },
+  "devDependencies": {
+    "electron": "^38.0.0",
+    "electron-builder": "^26.0.0"
+  }
+}
