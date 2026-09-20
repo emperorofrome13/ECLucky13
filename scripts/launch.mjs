@@ -11,7 +11,7 @@ function run(command,args,env=process.env){return new Promise((resolve,reject)=>
 const open=()=>{if(process.env.ECLucky13_NO_BROWSER!=='1')spawn('cmd.exe',['/d','/c','start','',url],{windowsHide:true,stdio:'ignore'}).unref()};
 async function main(){
  const occupied=await new Promise(resolve=>{const s=net.createServer();s.once('error',()=>resolve(true));s.listen(Number(port),'127.0.0.1',()=>s.close(()=>resolve(false)))});
- if(occupied){const html=await fetch(url).then(r=>r.text()).catch(()=>'');if(html.includes('<title>ECLucky13 v1.21</title>')){console.log('ECLucky13 is already running at '+url);console.log('Opening your browser — this window closes in 15 seconds.');open();await new Promise(r=>setTimeout(r,15000));return;}throw Error(`Port ${port} is in use. Close the other app or set PORT to another port.`)}
+ if(occupied){const html=await fetch(url).then(r=>r.text()).catch(()=>'');if(html.includes('<title>ECLucky13 v1.24</title>')){console.log('ECLucky13 is already running at '+url);console.log('Opening your browser — this window closes in 15 seconds.');open();await new Promise(r=>setTimeout(r,15000));return;}throw Error(`Port ${port} is in use. Close the other app or set PORT to another port.`)}
  const pkg=JSON.parse(fs.readFileSync('package.json','utf8'));
  const manifestTime=Math.max(...['package.json','package-lock.json'].filter(f=>fs.existsSync(f)).map(f=>fs.statSync(f).mtimeMs));
  const installStamp='node_modules/.ec12-install-stamp';
@@ -23,6 +23,6 @@ async function main(){
  const child=spawn(process.execPath,['scripts/next.mjs','start'],{cwd:root,stdio:'inherit',windowsHide:true,env:{...process.env,PORT:port}});
  let exited=false;child.on('error',e=>{exited=true;console.error(e.message);process.exitCode=1});child.on('exit',code=>{exited=true;process.exitCode=code||0});
  const wait=()=>new Promise(r=>setTimeout(r,500));
- while(!exited){try{const r=await fetch(url);if(r.ok){console.log('ECLucky13 v1.21 ready: HTTP '+r.status+' '+url);open();break}}catch{}await wait()}
+ while(!exited){try{const r=await fetch(url);if(r.ok){console.log('ECLucky13 v1.24 ready: HTTP '+r.status+' '+url);open();break}}catch{}await wait()}
 }
 main().catch(e=>{console.error('Could not start ECLucky13: '+e.message);process.exitCode=1});

@@ -1,10 +1,72 @@
 # ECLucky13 — HANDOFF
 
-**Current version:** v1.21 (package 1.0.21)
+**Current version:** v1.24 (package 1.0.24)
 **Date:** 2026-09-19
-**Status:** Trillian chrome UI skin delivered and verified. Supersedes v1.20 for visuals; backend notes still apply.
+**Status:** Saver bundle shipped (diet preset + turn budget); live re-grade proves opencode-parity cost. Supersedes v1.23 for saver behavior.
 
-## v1.21 Trillian chrome (this increment)
+## v1.24 saver bundle: diet preset + turn budget (this increment)
+
+Cost-saver mode (Settings > Limits) now does three things when ON, on every provider
+(only the cache marks stay remote-only):
+- **Saver diet preset**: history diet switches to 2 recent-full / 200 chars / 100 call-chars
+  via `historyDiet()` (`context-manager.ts`), overriding the knobs while on (documented
+  in the toggle blurb). Applies to main + stage loops.
+- **Soft turn budget**: new `provider.saverTurnBudget` (default 60, 0 = off, Settings >
+  Limits). Main loop warns once at N (visible user message + non-fatal event), then
+  finishes `blocked` with reason at N+5 so runs finalize and report instead of dying
+  silently. Stages keep their existing caps.
+- **Cache breakpoints** (v1.23, unchanged): remote-only hard rule kept.
+- Files: agent/context-manager.ts (helper), agent/loop.ts (LoopDeps/StageRunDeps fields,
+  diet call sites, budget logic), runs/manager.ts (plumbing), shared/settings-schema.ts,
+  components/SettingsDrawer.tsx (budget input). Backups: `backup/v118-perf/*-v122.*`.
+
+## Verification evidence (v1.24)
+
+- `npm.cmd run typecheck -- --incremental false`: PASS.
+- `npm.cmd test`: **179/179** (171 + 8 new: diet preset, budget warn/stop/off paths).
+- `npm.cmd run build`: PASS. `node test/lucky-ui.mjs` (isolated dev): **9/9**.
+- **Live P9 re-grade, saver ON, TRUE single pass** (autoprompts genuinely off this time):
+  **10/10 functional, 65 requests, 0.67M in (462k cached, 69%) / 51k out (~$0.020 billed),
+  463s, ended `blocked` via budget (warn 60, stop 65) with a complete verified app.**
+  Median request 111→83 KB (args 72→14.3 KB condensed, reasoning 0 KB holds).
+- Correction: the two earlier "no-stage" legs actually ran WITH stages (harness
+  `VAR || default` env bug, now fixed) — their numbers are superseded; see grade report.
+- NOTE: relaunch quickstart to serve v1.24 (auto-rebuilds).
+
+## v1.23 cloud cost saver (superseded above for saver behavior)
+
+New Settings > Limits toggle **Cloud cost saver** (default OFF, `provider.costSaver`):
+- When ON on a remote provider: marks prompt-cache breakpoints (`cache_control: ephemeral`) on system + last-2 messages per request (mirrors opencode's applyCaching, which measured 95% cache reads on this exact path). Hard rule in code: never sent to local models even if toggled on; tolerant servers ignore unknown marks, and the blurb says to switch off if a provider rejects.
+- Cache-aware ledger end-to-end: usage parser reads `prompt_tokens_details.cached_tokens` (fallback `cached_tokens`), `TokenUsage.cachedTokens` accumulates per request/session/archive, run chip shows `(cached N)` when present. Cost estimate formula unchanged (conservative; billed savings land on the provider invoice).
+- Files: providers/openai-compatible.ts (flag + withCacheBreakpoints + allowed-guard + usage parse), runs/manager.ts (plumbing + ledger), shared/contracts.ts (optional field), shared/settings-schema.ts, components/SettingsDrawer.tsx (checkbox), components/Ec12App.tsx (ledger + chip). Backups under `backup/v118-perf/` (`*-v122.*`).
+- Expected effect (not yet measured live): if EC's prefixes cache like opencode's did, billed input cost drops toward ~1/5; turn volume unchanged — this attacks price-per-token, not turns.
+
+## Verification evidence (v1.23)
+
+- `npm.cmd run typecheck -- --incremental false`: PASS.
+- `npm.cmd test`: **176/176** (171 + 5 new `test/lucky-costsaver.test.mjs`: breakpoint placement/no-mutation/tiny-history, local never, usage parse incl. fallbacks, setting default/normalize). One full-suite run showed the known v114 timing flake under 100% machine CPU; isolated rerun 10/10 (that path untouched). Two existing `lucky-agent` usage-shape assertions updated for the additive `cachedTokens: 0`.
+- `npm.cmd run build`: PASS, Next 14.2.35.
+- `node test/lucky-ui.mjs` (isolated dev 3314): **9/9**. Toggle probe: renders OFF, flips ON, zero pageerrors.
+- NOTE: relaunch quickstart to serve v1.23 (auto-rebuilds).
+
+## v1.22 token diet, round 2 (superseded above for provider/cost)
+
+- `summarizeOldToolCallArgs` (outgoing copy only, ids/types/names kept for pairing; JSON-aware per-arg summary) + `historyToolCallChars` setting (default 200, Settings > Tools) + batching instruction in `autoprompts/system.md` (loop already executes parallel calls; the model just never batched). Backups: `backup/v118-perf/*-v121.*` (copy back to revert).
+- Live P9 re-grade (autoprompts OFF, same prompt/model): 203 requests, 4.42M in / $0.184, 10/10 functional, cancelled by harness cap. Median request 111→83 KB (args 72→14.3 KB condensed, reasoning 0 KB holds). BUT turns rose 178→203 (batching prompt: only 28 multi-tool turns, 14%) — net total −13% (5.10M→4.42M). Target "beat opencode" (1.21M) NOT met: remaining gap is turn count (203 vs 33) + 46 KB/req tool outputs + no compaction (excluded) + no cache benefit.
+- Verification: typecheck PASS, 171/171 unit (4 new), build PASS, lucky-ui 9/9, new limit input renders (200, no pageerrors).
+- NOTE: relaunch quickstart to serve v1.22 (auto-rebuilds).
+
+## P9 3-way grade (superseded above for v1.22 numbers)
+
+- **Task/model:** new fixed prompt `coder-benchmark/prompts/p9_bridge_webui.md` (single-file Bridge WebUI, 10 checks), model `deepseek/deepseek-v4-flash-0731` for all legs, isolated outputs under `E:/test-output/grade-p9-2026-09-19/`.
+- **Result:** fork 75/80 ($0.0236, 896s) › upstream 1.18.31 74/80 ($0.0419, 634s) › ECLucky13 v1.21 64/80. Restaged EC with autoprompts OFF (toggle only): still 10/10 but 5.10M in / $0.212 / cap hit — pipeline was never the cost driver. All three 10/10 functional. Full report: `coder-benchmark/reports/P9_3WAY_2026-09-19.md`; leaderboard addendum added; raw evidence in the grade dir.
+- **Harness lessons:** headless `opencode run` hangs on silent stdin (fix: `stdin:ignore` + `--auto`); 95–98% of opencode input was prompt-cache reads; real LM Studio serves `{models:[...]}` with `type`/`key` fields.
+- **ECLucky13 upload ready:** secret audit clean (patterns + env/cred files; secrets only in excluded `data/`), `.gitignore` added, committed `30b1d72` (162 files, verified no data/backup/node_modules/.next/vendor/test-output leaks).
+- **Fork upload ready:** 102-file local diff scanned clean (4MB added lines, no key patterns), untracked custom files reviewed (HANDOFF, quickstart, context-settings — no secrets), committed `cbc4bb571f` on `dev` (origin still points at sst/opencode; do NOT push there — push to the new repo).
+- **gh 2.101.0 portable** at `E:/test-output/grade-bin/gh/bin/gh.exe`; `gh auth status` = not logged in. After login: create private repos `emperorofrome13/ECLucky13` + `emperorofrome13/opencode-fork` and push (commands drafted below).
+- After push: delete nothing (repos keep full history); grade-bin tools (opencode.exe, gh) stay local-only.
+
+## v1.21 Trillian chrome (superseded above for grading/push state)
 
 Applied the supplied mockup direction (navy palette + cleaned structure + Trillian-skin chrome) as a pure presentation layer — no data/DOM-contract changes:
 - Chamfered metallic panel frames (single-element gradient-border + clip-path technique, no wrapper divs so inline grid columns are untouched), floating header/composer, slanted title strips with grips on Workspace/Chat/Message panels, metal-gradient tab strips, chamfered buttons/chips/cards/inputs, square LED checkboxes, ▸/▾ collapsible markers, skinned scrollbars, starfield + nebula body backdrop, diamond avatar.

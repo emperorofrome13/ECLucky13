@@ -60,8 +60,8 @@ export interface AgentEventScope {
 
 export type ScopedEventEnvelope<TType extends string, TData> = EventEnvelope<TType, TData & AgentEventScope>;
 
-export interface TokenUsage { promptTokens: number; completionTokens: number; totalTokens: number }
-export const zeroUsage = (): TokenUsage => ({ promptTokens: 0, completionTokens: 0, totalTokens: 0 });
+export interface TokenUsage { promptTokens: number; completionTokens: number; totalTokens: number; cachedTokens?: number }
+export const zeroUsage = (): TokenUsage => ({ promptTokens: 0, completionTokens: 0, totalTokens: 0, cachedTokens: 0 });
 
 export interface PriceSnapshot { model: string; inPrice: number; outPrice: number; currency: string }
 

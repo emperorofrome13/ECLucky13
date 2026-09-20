@@ -15,7 +15,7 @@ import MessageContent, { CopyButton } from './MessageContent';
 import AttachmentList, { recordAttachments, type UIAttachment } from './AttachmentList';
 import TaskBoard, { type TaskRun, isActiveTask } from './TaskBoard';
 
-export const APP_VERSION = '1.21';
+export const APP_VERSION = '1.24';
 const SKEY = 'eclucky13.settings.v1';
 
 function newId(p: string) { return p + '_' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36); }
@@ -366,7 +366,7 @@ interface RequestRow { eventId: string; requestId: string; at: number; messageCo
       case 'change.reverted': setChanges((l) => l.map((c) => (c.changeId === d.changeId ? { ...c, status: 'reverted' } : c))); setRefreshKey((k) => k + 1); break;
       case 'verification.check': setVerification((v) => [...v.filter((x) => x.checkId !== d.check.checkId), { ...d.check, preview: d.check.outputPreview }]); break;
       case 'stage.finished': setStages((s) => [...s.filter((x) => x.stage !== d.stage), { stage: d.stage, passed: d.passed, summary: d.summary }]); break;
-      case 'usage': if (d.usage) { setUsageKnown(true); setUsage((u) => ({ promptTokens: u.promptTokens + (d.usage.promptTokens || 0), completionTokens: u.completionTokens + (d.usage.completionTokens || 0), totalTokens: u.totalTokens + (d.usage.totalTokens || 0) })); const usageRequestId = typeof d.requestId === 'string' ? d.requestId : ''; const reported = { promptTokens: d.usage.promptTokens || 0, completionTokens: d.usage.completionTokens || 0, totalTokens: d.usage.totalTokens || 0 }; if (usageRequestId) setRequests((list) => list.map((r) => (r.requestId === usageRequestId && !r.usage ? { ...r, usage: reported } : r))); } break;
+      case 'usage': if (d.usage) { setUsageKnown(true); setUsage((u) => ({ promptTokens: u.promptTokens + (d.usage.promptTokens || 0), completionTokens: u.completionTokens + (d.usage.completionTokens || 0), totalTokens: u.totalTokens + (d.usage.totalTokens || 0), cachedTokens: (u.cachedTokens || 0) + (d.usage.cachedTokens || 0) })); const usageRequestId = typeof d.requestId === 'string' ? d.requestId : ''; const reported = { promptTokens: d.usage.promptTokens || 0, completionTokens: d.usage.completionTokens || 0, totalTokens: d.usage.totalTokens || 0, cachedTokens: d.usage.cachedTokens || 0 }; if (usageRequestId) setRequests((list) => list.map((r) => (r.requestId === usageRequestId && !r.usage ? { ...r, usage: reported } : r))); } break;
       case 'error': setError(d.message || 'error'); break;
       case 'provider.status':
         setProviderPhase((d.providerPhase || d.phase) === 'generating' ? 'generating' : 'waiting');
@@ -775,7 +775,7 @@ interface RequestRow { eventId: string; requestId: string; at: number; messageCo
         <span className="chip">mode: <select value={settings.mode} onChange={(e) => setSettings((s) => ({ ...s, mode: e.target.value as Mode }))} style={{ width: 'auto', marginLeft: 4, padding: '1px 4px' }}>
           <option value="ask">Ask</option><option value="plan">Plan</option><option value="code">Code</option></select></span>
         <span className="chip click" onClick={() => setSettingsOpen(true)}>{(running ? effectiveModel || settings.provider.model : settings.provider.model) || 'no model'}</span>
-        <span className="chip" title="Current run, all stages and reported requests. Cost uses the input/output rates in Settings, not a billing receipt.">{usageKnown ? `Run tokens ↑${usage.promptTokens.toLocaleString()} ↓${usage.completionTokens.toLocaleString()}${usageIncomplete ? ' (partial)' : ''} · estimated ${settings.provider.currency}${cost.toFixed(4)}` : 'Run usage / cost: unknown'}</span>
+        <span className="chip" title="Current run, all stages and reported requests. Cost uses the input/output rates in Settings, not a billing receipt.">{usageKnown ? `Run tokens ↑${usage.promptTokens.toLocaleString()} ↓${usage.completionTokens.toLocaleString()}${(usage.cachedTokens || 0) > 0 ? ` (cached ${usage.cachedTokens.toLocaleString()})` : ''}${usageIncomplete ? ' (partial)' : ''} · estimated ${settings.provider.currency}${cost.toFixed(4)}` : 'Run usage / cost: unknown'}</span>
         <span className="spacer" />
         <span className="chip session-indicator" title="Whether your next prompt continues this chat or starts a fresh one">{history.length || currentTask ? `Same session · ${sessions.find((s) => s.id === sessionId)?.title || currentTask.slice(0, 42) || 'active chat'}` : 'New session'}</span>
         <button className="btn sm" aria-expanded={tasksOpen} onClick={() => { setTasksOpen((v) => !v); setView('agent'); }}>Tasks · {allRuns.filter((r) => isActiveTask(r.state)).length} active</button>

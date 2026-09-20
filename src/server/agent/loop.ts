@@ -10,7 +10,7 @@ import type { ChatMessage, OpenAICompatProvider, StreamEvent } from '../provider
 import { assembleToolCalls, parseTextToolCalls, type AssembledToolCall } from '../providers/openai-compatible';
 import { executeTool, toolsForRun, type ToolContext } from '../tools/registry';
 import type { Conversation, ReasoningReplay } from './context-manager';
-import { prepareConversation } from './context-manager';
+import { prepareConversation, historyDiet } from './context-manager';
 import { getChange } from '../workspace/change-journal';
 import { saveRequestPayload } from '../request-payloads';
 import { lineDiff } from '@/shared/diff';
@@ -116,6 +116,10 @@ export interface LoopDeps {
   maxRequestAttempts?: number;
   outputContinuationLimit?: number;
   protocolRecoveryAttempts?: number;
+  /** Cost-saver mode: economical history diet + prompt-cache breakpoints (remote only). */
+  costSaver?: boolean;
+  /** Soft turn budget, active only with costSaver: warn at N, force wrap-up N+5 later. 0/undefined = off. */
+  softTurnLimit?: number;
   contextTools: ToolContext['contextTools'];
   journalEnv: ToolContext['env'];
   conversation: Conversation;
@@ -163,6 +167,12 @@ export async function runMainLoop(deps: LoopDeps): Promise<LoopOutcome> {
   const usage = zeroUsage();
   let content = '';
   let turns = 0;
+  // Cost-saver soft turn budget (0/undefined = off): warn once at N turns via a
+  // visible user message, then finish gracefully N+SOFT_GRACE_TURNS later as
+  // blocked (not exhausted) so the run still finalizes and reports honestly.
+  const softLimit = deps.costSaver === true && deps.softTurnLimit && deps.softTurnLimit > 0 ? Math.floor(deps.softTurnLimit) : 0;
+  const SOFT_GRACE_TURNS = 5;
+  let softWarned = false;
   let exhausted = false;
   let blocked = false;
   let productivelyChanged = false;
@@ -190,9 +200,19 @@ export async function runMainLoop(deps: LoopDeps): Promise<LoopOutcome> {
     // purely on microtasks and starve timers — abort callbacks (Stop) would never fire.
     await new Promise<void>((resolve) => setImmediate(resolve));
     if (signal.aborted) return { content, cancelled: true, exhausted: false, blocked: false, productivelyChanged, usage, turns };
+    if (softLimit > 0 && !softWarned && turns >= softLimit) {
+      softWarned = true;
+      const notice = `Cost-saver turn budget reached (${softLimit} turns). Finish now: make one final essential change if needed, then call attempt_completion. The run stops automatically after ${SOFT_GRACE_TURNS} more turns.`;
+      deps.conversation.messages.push({ role: 'user', content: notice });
+      emit('error', { message: notice, fatal: false });
+    }
+    if (softLimit > 0 && turns >= softLimit + SOFT_GRACE_TURNS) {
+      return { content, cancelled: false, exhausted: false, blocked: true, error: `Cost-saver turn budget exceeded (${turns} turns); stopping to bound cost. Re-run with the toggle off or a higher budget for longer tasks.`, productivelyChanged, usage, turns };
+    }
 
     Object.assign(scope, { requestId: randomUUID(), turnId: `${deps.runId}:${turns + 1}`, requestAttempt: turnRetries + 1 });
-    const prepared = prepareConversation(deps.conversation, deps.systemBlocks, schemas, deps.contextWindow, deps.requestedMaxTokens, deps.autoCompact, deps.autoCompactAtPercent, deps.keepRecentTurns, deps.reasoningReplay ?? 'full', deps.contextTools.historyToolFull ?? 5, deps.contextTools.historyToolChars ?? 500);
+    const diet = historyDiet(deps.contextTools, deps.costSaver === true);
+    const prepared = prepareConversation(deps.conversation, deps.systemBlocks, schemas, deps.contextWindow, deps.requestedMaxTokens, deps.autoCompact, deps.autoCompactAtPercent, deps.keepRecentTurns, deps.reasoningReplay ?? 'full', diet.full, diet.chars, diet.callChars);
     if (prepared.compaction?.compacted) emit('context.compacted', prepared.compaction);
     const { messages, maxTokens } = prepared;
     const contextStatus = { usedTokens: prepared.usedTokens, contextWindow: deps.contextWindow, maxTokens, autoCompactAtPercent: deps.autoCompactAtPercent, estimated: true };
@@ -367,6 +387,8 @@ export async function runStage(stage: string, deps: {
   maxRequestAttempts?: number; stageOutputContinuationLimit?: number; duplicateObservationLimit?: number;
   noProgressTurnLimit?: number; repeatedFailureLimit?: number; protocolRecoveryAttempts?: number;
   stageId?: string; stageAttempt?: number;
+  /** Cost-saver mode: economical history diet in stages too (cache marks stay remote-only). */
+  costSaver?: boolean;
 }): Promise<StageOutcome> {
   const stageId = deps.stageId || stage;
   const stageAttempt = deps.stageAttempt || 1;
@@ -399,7 +421,8 @@ export async function runStage(stage: string, deps: {
     let turnReasoning = '';
     let streamError: string | undefined;
     let finishReason: string | undefined;
-    const prepared = prepareConversation(conversation, systemBlocks, schemas, deps.contextWindow, deps.requestedMaxTokens, deps.autoCompact, deps.autoCompactAtPercent, deps.keepRecentTurns, deps.reasoningReplay ?? 'tool-turns', deps.contextTools.historyToolFull ?? 5, deps.contextTools.historyToolChars ?? 500);
+    const stageDiet = historyDiet(deps.contextTools, deps.costSaver === true);
+    const prepared = prepareConversation(conversation, systemBlocks, schemas, deps.contextWindow, deps.requestedMaxTokens, deps.autoCompact, deps.autoCompactAtPercent, deps.keepRecentTurns, deps.reasoningReplay ?? 'tool-turns', stageDiet.full, stageDiet.chars, stageDiet.callChars);
     if (prepared.compaction?.compacted) emit('context.compacted', prepared.compaction);
     const contextStatus = { usedTokens: prepared.usedTokens, contextWindow: deps.contextWindow, maxTokens: prepared.maxTokens, autoCompactAtPercent: deps.autoCompactAtPercent || 80, estimated: true };
     emit('context.usage', contextStatus);
@@ -512,6 +535,8 @@ export interface StageRunDeps {
   turnRecoveryAttempts?: number;
   maxRequestAttempts?: number; stageOutputContinuationLimit?: number; duplicateObservationLimit?: number;
   noProgressTurnLimit?: number; repeatedFailureLimit?: number; protocolRecoveryAttempts?: number;
+  /** Cost-saver mode for stage runs (diet preset; cache marks stay remote-only). */
+  costSaver?: boolean;
 }
 
 /**

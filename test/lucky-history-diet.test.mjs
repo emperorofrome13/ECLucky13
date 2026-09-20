@@ -91,3 +91,52 @@ test('active-batch default keeps only the latest tool batch reasoning', () => {
   assert.equal(kept.length, 1);
   assert.equal(kept[0].reasoning_content, 'reason-' + (c.messages.length - 2));
 });
+
+const callConvo = (n) => {
+  const messages = [{ role: 'user', content: 'do the thing' }];
+  for (let i = 0; i < n; i++) {
+    messages.push({ role: 'assistant', content: '', tool_calls: [{ id: 'k' + i, type: 'function', function: { name: 'write_file', arguments: JSON.stringify({ path: `f${i}.txt`, content: 'y'.repeat(2000) }) } }] });
+    messages.push({ role: 'tool', tool_call_id: 'k' + i, content: 'ok' });
+  }
+  return { messages, plan: [], updatedAt: '2026-09-19T00:00:00.000Z' };
+};
+
+test('summarizeOldToolCallArgs condenses old arguments, keeps pairing intact', () => {
+  const out = cm.summarizeOldToolCallArgs(callConvo(6).messages, 2, 200);
+  const calls = out.filter((m) => m.role === 'assistant');
+  assert.equal(calls.length, 6);
+  for (const c of calls.slice(-2)) assert.ok(JSON.stringify(c.tool_calls).length > 2000);
+  for (const c of calls.slice(0, 4)) {
+    const fn = c.tool_calls[0].function;
+    assert.equal(fn.name, 'write_file');
+    assert.equal(c.tool_calls[0].id.slice(0, 1), 'k');
+    assert.equal(c.tool_calls[0].type, 'function');
+    assert.ok(fn.arguments.includes('path=') && fn.arguments.includes('<200'));
+    assert.ok(fn.arguments.length < 300);
+  }
+});
+
+test('summarizeOldToolCallArgs leaves short args and non-calls alone, never mutates', () => {
+  const c = callConvo(2);
+  const before = JSON.stringify(c.messages);
+  const out = cm.summarizeOldToolCallArgs(c.messages, 5, 200);
+  assert.equal(JSON.stringify(c.messages), before);
+  assert.ok(out.every((m, i) => m === c.messages[i]));
+  assert.deepEqual(cm.summarizeOldToolCallArgs(c.messages, 5, 0), c.messages);
+  const all = cm.summarizeOldToolCallArgs(c.messages, 0, 200);
+  assert.ok(all.filter((m) => m.role === 'assistant').every((m) => m.tool_calls[0].function.arguments.includes('chars>')));
+});
+
+test('prepareConversation slims old call arguments, durable stays complete', () => {
+  const c = callConvo(8);
+  const p = cm.prepareConversation(c, ['sys'], [], 200000, 4096, false, 80, 4, 'full', 5, 500, 200);
+  const outCalls = p.messages.filter((m) => m.role === 'assistant');
+  assert.ok(outCalls.slice(-5).every((m) => JSON.stringify(m.tool_calls).length > 2000));
+  assert.ok(outCalls.slice(0, 3).every((m) => m.tool_calls[0].function.arguments.includes('chars>')));
+  assert.ok(c.messages.filter((m) => m.role === 'assistant').every((m) => m.tool_calls[0].function.arguments.includes('yyyy')));
+});
+
+test('system prompt instructs batched independent tool calls', () => {
+  const text = fs.readFileSync(new URL('../autoprompts/system.md', import.meta.url));
+  assert.match(String(text), /batch independent tool calls/i);
+});

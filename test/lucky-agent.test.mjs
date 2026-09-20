@@ -107,7 +107,7 @@ test('manager records usage durably per request across main and stages without d
     const record = mgr.runs.get(created.id);
     assert.ok(['succeeded', 'blocked', 'unverified'].includes(record.state), 'run reached a terminal state: ' + record.state + ' ' + (record.error || ''));
     const stored = mgr.loadSession(session.id);
-    assert.deepEqual(stored.usage, { promptTokens: 40, completionTokens: 4, totalTokens: 44 });
+    assert.deepEqual(stored.usage, { promptTokens: 40, completionTokens: 4, totalTokens: 44, cachedTokens: 0 });
     assert.ok(stored.usageRequests && Object.values(stored.usageRequests).length >= 2, 'per-request usage rows persisted');
     for (const row of Object.values(stored.usageRequests)) assert.equal(row.usageStatus, 'reported');
     const stageRows = Object.values(stored.usageRequests).filter((r) => r.phase === 'stage');
@@ -125,7 +125,7 @@ test('recordRequestUsage counts a re-reported request once (no double count)', (
   mgr.recordRequestUsage(s, { requestId: 'r1', runId: 'run1', phase: 'main', stageId: null, stageAttempt: 0, usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 }, price, ts: '', finished: true, completed: true });
   mgr.recordRequestUsage(s, { requestId: 'r2', runId: 'run1', phase: 'stage', stageId: 'review', stageAttempt: 2, usage: { promptTokens: 30, completionTokens: 3, totalTokens: 33 }, price, ts: '' });
   mgr.recordRequestUsage(s, { requestId: 'r3', runId: 'run1', phase: 'main', stageId: null, stageAttempt: 0, price, ts: '', finished: true, cancelled: true });
-  assert.deepEqual(s.usage, { promptTokens: 40, completionTokens: 8, totalTokens: 48 });
+  assert.deepEqual(s.usage, { promptTokens: 40, completionTokens: 8, totalTokens: 48, cachedTokens: 0 });
   const rows = Object.values(s.usageRequests);
   assert.equal(rows.length, 3);
   assert.equal(rows.find((r) => r.requestId === 'r1').usageStatus, 'reported');

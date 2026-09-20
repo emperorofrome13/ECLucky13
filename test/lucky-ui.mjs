@@ -274,7 +274,7 @@ try {
   await test('No browser crashes or unexpected API requests', async () => {
     assert.deepEqual(pageErrors, []);
     assert.deepEqual(unexpectedRequests, []);
-    assert.match(await page.title(), /ECLucky13 v1\.21/);
+    assert.match(await page.title(), /ECLucky13 v1\.24/);
   });
 } finally {
   releaseSave?.();

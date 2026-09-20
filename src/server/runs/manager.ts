@@ -280,11 +280,13 @@ export function recordRequestUsage(session: SessionRecord, input: RequestUsageIn
       promptTokens: Math.max(before.promptTokens, input.usage.promptTokens),
       completionTokens: Math.max(before.completionTokens, input.usage.completionTokens),
       totalTokens: Math.max(before.totalTokens, input.usage.totalTokens),
+      cachedTokens: Math.max(before.cachedTokens || 0, input.usage.cachedTokens || 0),
     };
     session.usage = {
       promptTokens: session.usage.promptTokens + next.promptTokens - before.promptTokens,
       completionTokens: session.usage.completionTokens + next.completionTokens - before.completionTokens,
       totalTokens: session.usage.totalTokens + next.totalTokens - before.totalTokens,
+      cachedTokens: (session.usage.cachedTokens || 0) + next.cachedTokens - (before.cachedTokens || 0),
     };
     row.usage = next;
     row.usageStatus = 'reported';
@@ -490,7 +492,7 @@ private recovered = false;
       maxTokens: maxOut, temperature: settings.provider.temperature,
       connectTimeoutMs: settings.provider.connectTimeoutMs, firstTokenTimeoutMs: settings.provider.firstTokenTimeoutMs,
       streamIdleTimeoutMs: settings.provider.streamIdleTimeoutMs, requestTimeoutMs: settings.provider.requestTimeoutMs,
-      retries: settings.provider.retries,
+      retries: settings.provider.retries, cacheBreakpoints: settings.provider.costSaver === true,
     });
 
     const systemBlocks = [
@@ -528,6 +530,8 @@ private recovered = false;
       runId: record.id, sessionId: record.sessionId, workspace: record.workspacePath, mode: record.mode, signal,
       provider, contextWindow: ctx, requestedMaxTokens: maxOut,
       reasoningReplay,
+      costSaver: settings.provider.costSaver === true,
+      softTurnLimit: settings.provider.costSaver === true ? settings.provider.saverTurnBudget : 0,
       autoCompact: settings.provider.autoCompact, autoCompactAtPercent: settings.provider.autoCompactAtPercent, keepRecentTurns: settings.provider.keepRecentTurns,
       maxIterations: settings.agent.maxIterations, ...recoveryLimits,
       outputContinuationLimit: settings.agent.outputContinuationLimit,
@@ -589,7 +593,7 @@ private recovered = false;
         const stagePrompt = (await import('../prompts')).loadStagePrompt(stage, record.workspacePath);
         const r = await runStageWithRepair(stage, {
           provider, signal, contextWindow: ctx, requestedMaxTokens: maxOut,
-          reasoningReplay,
+          reasoningReplay, costSaver: settings.provider.costSaver === true,
           autoCompact: settings.provider.autoCompact, autoCompactAtPercent: settings.provider.autoCompactAtPercent, keepRecentTurns: settings.provider.keepRecentTurns,
           maxIterations: settings.agent.stageMaxIterations, ...recoveryLimits,
           stageOutputContinuationLimit: settings.agent.stageOutputContinuationLimit,

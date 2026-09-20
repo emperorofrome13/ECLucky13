@@ -5,6 +5,8 @@ import { isLocal } from './model-discovery';
 export interface ProviderConfig {
   baseUrl: string; apiKey: string; model: string; maxTokens: number; temperature: number;
   connectTimeoutMs: number; firstTokenTimeoutMs: number; streamIdleTimeoutMs: number; requestTimeoutMs: number; retries: number;
+  /** Cost-saver mode: mark cache breakpoints (never sent to local models). */
+  cacheBreakpoints?: boolean;
 }
 export type StreamEvent =
   | { type: 'content' | 'reasoning'; text: string }
@@ -20,7 +22,7 @@ export class AuthenticationOrRequestError extends Error {
   constructor(message: string, status?: number) { super(message); this.status = status; }
 }
 
-function* payloadEvents(ev: any): Generator<StreamEvent> {
+export function* payloadEvents(ev: any): Generator<StreamEvent> {
   if (ev?.error) throw new AuthenticationOrRequestError('Provider error: ' + (typeof ev.error === 'string' ? ev.error : ev.error.message || JSON.stringify(ev.error)));
   const choice = ev?.choices?.[0];
   const delta = choice?.delta || choice?.message;
@@ -36,8 +38,27 @@ function* payloadEvents(ev: any): Generator<StreamEvent> {
   if (ev?.usage) {
     const u = ev.usage;
     const promptTokens = Number(u.prompt_tokens || 0), completionTokens = Number(u.completion_tokens || 0);
-    yield { type: 'usage', usage: { promptTokens, completionTokens, totalTokens: Number(u.total_tokens || promptTokens + completionTokens) } };
+    const cached = Number(u.prompt_tokens_details?.cached_tokens ?? u.cached_tokens ?? 0);
+    yield { type: 'usage', usage: { promptTokens, completionTokens, totalTokens: Number(u.total_tokens || promptTokens + completionTokens), ...(cached > 0 ? { cachedTokens: cached } : {}) } };
   }
+}
+
+/**
+ * Cost-saver: mark prompt-cache breakpoints on the stable prefix (system messages)
+ * and the trailing tail, mirroring opencode's applyCaching. Returns new objects;
+ * never mutates. Whether a provider honors the marks is up to it — unknown marks
+ * are ignored by tolerant servers, which is why this stays behind the toggle.
+ */
+export function withCacheBreakpoints<T extends { role: string }>(messages: T[]): (T & { cache_control?: { type: string } })[] {
+  const systems = messages.filter((m) => m.role === 'system').slice(0, 2);
+  const tail = messages.filter((m) => m.role !== 'system').slice(-2);
+  const marked = new Set([...systems, ...tail]);
+  return messages.map((m) => (marked.has(m) ? { ...m, cache_control: { type: 'ephemeral' } } : m));
+}
+
+/** Breakpoints are never sent to local models, even with the toggle on. */
+export function cacheBreakpointsAllowed(baseUrl: string, enabled?: boolean): boolean {
+  return enabled === true && !isLocal(baseUrl);
 }
 
 export class OpenAICompatProvider {
@@ -47,9 +68,11 @@ export class OpenAICompatProvider {
     const local = isLocal(this.cfg.baseUrl);
     const headers: Record<string, string> = { 'Content-Type': 'application/json', Accept: 'text/event-stream' };
     if (this.cfg.apiKey) headers.Authorization = `Bearer ${this.cfg.apiKey}`;
-    const wireMessages = messages.map(({ images, attachmentIds, ...message }) => images?.length ? {
+    const mapped = messages.map(({ images, attachmentIds, ...message }) => images?.length ? {
       ...message, content: [{ type: 'text', text: message.content || '' }, ...images.map(image => ({ type: 'image_url', image_url: image }))],
     } : message);
+    // Cost-saver breakpoints; the helper hard-refuses local models even if toggled on.
+    const wireMessages = cacheBreakpointsAllowed(this.cfg.baseUrl, this.cfg.cacheBreakpoints) ? withCacheBreakpoints(mapped) : mapped;
     const body = JSON.stringify({ model: this.cfg.model, messages: wireMessages, temperature: this.cfg.temperature,
       ...(opts.maxTokens > 0 ? { max_tokens: Math.floor(opts.maxTokens) } : {}), stream: true,
       stream_options: { include_usage: true }, ...(opts.tools?.length ? { tools: opts.tools } : {}) });

@@ -50,6 +50,7 @@ export interface ContextToolLimits {
   searchOutputMaxChars: number;
   historyToolFull: number;
   historyToolChars: number;
+  historyToolCallChars: number;
   webTimeoutMs: number;
   context7TimeoutMs: number;
 }
@@ -57,7 +58,7 @@ export interface ContextToolLimits {
 export const DEFAULT_CONTEXT_TOOL_LIMITS: ContextToolLimits = {
   mcpTimeoutMs: 60000, codegraphTimeoutMs: 120000, toolOutputMaxChars: 12000,
   readFileMaxChars: 24000, shellOutputMaxChars: 8000, searchOutputMaxChars: 16000,
-  historyToolFull: 5, historyToolChars: 500,
+  historyToolFull: 5, historyToolChars: 500, historyToolCallChars: 200,
   webTimeoutMs: 15000, context7TimeoutMs: 30000,
 };
 
@@ -83,6 +84,8 @@ export interface ProviderSettings {
   keepRecentTurns: number;
   autoModelLimits: boolean;
   reasoningReplay: ReasoningReplay;
+  costSaver: boolean;
+  saverTurnBudget: number;
 }
 
 export interface AgentSettings {
@@ -126,7 +129,7 @@ export const DEFAULT_SETTINGS: EC12Settings = {
     modelSelection: 'auto', maxTokens: 65536, temperature: 0.7,     contextWindow: 65536,
     connectTimeoutMs: 180000, firstTokenTimeoutMs: 300000, streamIdleTimeoutMs: 300000,
     requestTimeoutMs: 1800000, retries: 3, inputCostPer1M: 0, outputCostPer1M: 0, currency: '$',
-    autoCompact: true, autoCompactAtPercent: 80, keepRecentTurns: 4, autoModelLimits: true, reasoningReplay: 'auto',
+    autoCompact: true, autoCompactAtPercent: 80, keepRecentTurns: 4, autoModelLimits: true, reasoningReplay: 'auto', costSaver: false, saverTurnBudget: 60,
   },
   agent: { maxIterations: 0, stageMaxIterations: 0, reviewBeforeApply: false, autoAcceptChanges: true, repeatedFailureLimit: 3, stageRepairAttempts: 1, turnRecoveryAttempts: 3, noProgressTurnLimit: 20, maxRequestAttempts: 4, duplicateObservationLimit: 20, outputContinuationLimit: 4, stageOutputContinuationLimit: 2, protocolRecoveryAttempts: 3 },
   autoPrompt: { enabled: true, stages: ['review', 'completeness', 'senior_review'] },
@@ -185,6 +188,8 @@ export function normalizeSettings(input: any): EC12Settings {
       keepRecentTurns: int(p.keepRecentTurns, D.provider.keepRecentTurns, 1, 20),
       autoModelLimits: bool(p.autoModelLimits, true),
       reasoningReplay: ['auto', 'none', 'active-batch', 'tool-turns', 'full'].includes(p.reasoningReplay) ? p.reasoningReplay : D.provider.reasoningReplay,
+      costSaver: bool(p.costSaver, false),
+      saverTurnBudget: int(p.saverTurnBudget, D.provider.saverTurnBudget, 0, 10000),
     },
     agent: {
       maxIterations: int(a.maxIterations, 0, 0),
@@ -217,6 +222,7 @@ export function normalizeSettings(input: any): EC12Settings {
       searchOutputMaxChars: int(ct.searchOutputMaxChars, D.contextTools.searchOutputMaxChars),
       historyToolFull: int(ct.historyToolFull, D.contextTools.historyToolFull),
       historyToolChars: int(ct.historyToolChars, D.contextTools.historyToolChars),
+      historyToolCallChars: int(ct.historyToolCallChars, D.contextTools.historyToolCallChars),
       webTimeoutMs: int(ct.webTimeoutMs, D.contextTools.webTimeoutMs),
       context7TimeoutMs: int(ct.context7TimeoutMs, D.contextTools.context7TimeoutMs),
     },

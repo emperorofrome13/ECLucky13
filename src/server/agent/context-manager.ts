@@ -149,6 +149,54 @@ export function summarizeOldToolOutputs(messages: ChatMessage[], keepFull = 5, m
   });
 }
 
+/**
+ * Token diet for tool CALLS: stale call arguments are condensed on the OUTGOING
+ * copy only (companion to summarizeOldToolOutputs, which handles results).
+ * Historical tool_calls JSON (often whole file contents in write_file/edit_file
+ * arguments) is the largest single block in long runs. The most recent `keepFull`
+ * assistant tool-call messages stay complete; older ones keep call ids, types and
+ * function names with per-argument summaries. `maxChars <= 0` disables.
+ * Never mutates its input.
+ */
+export function summarizeOldToolCallArgs(messages: ChatMessage[], keepFull = 5, maxChars = 200): ChatMessage[] {
+  if (maxChars <= 0) return messages;
+  const toolIdx: number[] = [];
+  messages.forEach((m, i) => { if (m.role === 'assistant' && m.tool_calls?.length) toolIdx.push(i); });
+  const keep = keepFull <= 0 ? new Set<number>() : new Set(toolIdx.slice(-keepFull));
+  return messages.map((m, i) => {
+    if (m.role !== 'assistant' || keep.has(i) || !m.tool_calls?.length) return m;
+    return { ...m, tool_calls: m.tool_calls.map((c) => ({ ...c, function: { ...((c as { function?: unknown }).function as Record<string, unknown> || {}), arguments: condenseToolArguments((c as { function?: { arguments?: unknown } }).function?.arguments, maxChars) } })) };
+  });
+}
+
+function condenseToolArguments(raw: unknown, maxChars: number): string {
+  const text = typeof raw === 'string' ? raw : JSON.stringify(raw ?? '');
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const parts = Object.entries(parsed as Record<string, unknown>).map(([key, value]) => {
+        const valueText = typeof value === 'string' ? value : JSON.stringify(value);
+        return `${key}=${valueText.length > 120 ? `<${valueText.length} chars>` : valueText}`;
+      });
+      const summary = '{' + parts.join(', ') + '}';
+      if (summary.length <= maxChars) return summary;
+    }
+  } catch { /* fall through to slicing */ }
+  if (text.length <= maxChars) return text;
+  return text.slice(0, maxChars).trimEnd() + `\n[Earlier tool arguments condensed; full text retained in run history.]`;
+}
+
+export interface HistoryDiet { full: number; chars: number; callChars: number }
+/**
+ * Effective history diet: user knobs normally; the economical saver preset while
+ * cost-saver mode is on (documented on the toggle). Applies to every provider —
+ * only the cache breakpoints stay remote-only.
+ */
+export function historyDiet(limits: { historyToolFull?: number; historyToolChars?: number; historyToolCallChars?: number }, saver: boolean): HistoryDiet {
+  if (!saver) return { full: limits.historyToolFull ?? 5, chars: limits.historyToolChars ?? 500, callChars: limits.historyToolCallChars ?? 200 };
+  return { full: 2, chars: 200, callChars: 100 };
+}
+
 function summarizeMessages(messages: ChatMessage[]): string {
   return messages.map((message) => {
     if (message.role === 'tool') return `Tool result${message.tool_call_id ? ` (${message.tool_call_id})` : ''}: ${String(message.content || '').slice(0, 1800)}`;
@@ -280,7 +328,7 @@ export function prepareRequest(messages: ChatMessage[], tools: unknown[], contex
 }
 
 /** One budget path for main runs and review stages; instructions and schemas count too. */
-export function prepareConversation(conversation: Conversation, systemBlocks: string[], tools: unknown[], context: number, requested: number, autoCompact = true, threshold = 80, keep = 4, replay: ReasoningReplay | boolean = 'full', historyFull = 5, historyChars = 500) {
+export function prepareConversation(conversation: Conversation, systemBlocks: string[], tools: unknown[], context: number, requested: number, autoCompact = true, threshold = 80, keep = 4, replay: ReasoningReplay | boolean = 'full', historyFull = 5, historyChars = 500, historyCallChars = 200) {
   // Reasoning replay is bounded per provider (see ReasoningReplay). The durable conversation and
   // the event log always keep the originals; only the outgoing copy is pruned.
   const original = conversation;
@@ -311,6 +359,11 @@ export function prepareConversation(conversation: Conversation, systemBlocks: st
   const summarized = summarizeOldToolOutputs(conversation.messages, historyFull, historyChars);
   summarized.forEach((m, i) => { if (m !== conversation.messages[i]) durableMessages.set(m, conversation.messages[i]); });
   conversation = { ...conversation, messages: summarized };
+  // Same treatment for stale tool CALL arguments (ids, types and names are kept so
+  // tool result pairing still resolves; only argument bodies shrink).
+  const argSlimmed = summarizeOldToolCallArgs(conversation.messages, historyFull, historyCallChars);
+  argSlimmed.forEach((m, i) => { if (m !== conversation.messages[i]) durableMessages.set(m, conversation.messages[i]); });
+  conversation = { ...conversation, messages: argSlimmed };
   const scale = Math.max(1, conversation.tokenScale || 1);
   const system = () => {
     const retained = conversation.messages.map((m) => m.content || '').join('\n');
