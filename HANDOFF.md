@@ -46,6 +46,10 @@
 - Verified: shell boots the server (HTTP 200 on isolated 3399), window loads the app,
   no shell errors. `npm test`: **179/179** serial (one timing test flakes under
   parallel load; passes 10/10 alone and 179/179 with `--test-concurrency=1`).
+- Published: https://github.com/emperorofrome13/ECLucky13 (master) + release v1.26
+  with `ECLucky13-Setup-1.0.26.exe` (90MB, per-user NSIS). No secrets in the repo:
+  tracked files scanned clean; `data/`, `backup/`, `test-output/`, `vendor/`,
+  `workspace-test/`, `.env*` are gitignored.
 
 ## v1.25 warn-only budget (this increment)
 
