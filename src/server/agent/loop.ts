@@ -118,7 +118,7 @@ export interface LoopDeps {
   protocolRecoveryAttempts?: number;
   /** Cost-saver mode: economical history diet + prompt-cache breakpoints (remote only). */
   costSaver?: boolean;
-  /** Soft turn budget, active only with costSaver: warn at N, force wrap-up N+5 later. 0/undefined = off. */
+  /** Soft turn budget, active only with costSaver: warn once at N turns. 0/undefined = off. Never force-stops. */
   softTurnLimit?: number;
   contextTools: ToolContext['contextTools'];
   journalEnv: ToolContext['env'];
@@ -168,10 +168,9 @@ export async function runMainLoop(deps: LoopDeps): Promise<LoopOutcome> {
   let content = '';
   let turns = 0;
   // Cost-saver soft turn budget (0/undefined = off): warn once at N turns via a
-  // visible user message, then finish gracefully N+SOFT_GRACE_TURNS later as
-  // blocked (not exhausted) so the run still finalizes and reports honestly.
+  // visible user message. Advisory only: the run always continues to its own
+  // conclusion (completion, stop, or maxIterations). Never force-stops.
   const softLimit = deps.costSaver === true && deps.softTurnLimit && deps.softTurnLimit > 0 ? Math.floor(deps.softTurnLimit) : 0;
-  const SOFT_GRACE_TURNS = 5;
   let softWarned = false;
   let exhausted = false;
   let blocked = false;
@@ -202,12 +201,9 @@ export async function runMainLoop(deps: LoopDeps): Promise<LoopOutcome> {
     if (signal.aborted) return { content, cancelled: true, exhausted: false, blocked: false, productivelyChanged, usage, turns };
     if (softLimit > 0 && !softWarned && turns >= softLimit) {
       softWarned = true;
-      const notice = `Cost-saver turn budget reached (${softLimit} turns). Finish now: make one final essential change if needed, then call attempt_completion. The run stops automatically after ${SOFT_GRACE_TURNS} more turns.`;
+      const notice = `Cost-saver note: ${softLimit} turns used. Consider wrapping up: make one final essential change if needed, then call attempt_completion. This is advisory only; the run continues.`;
       deps.conversation.messages.push({ role: 'user', content: notice });
       emit('error', { message: notice, fatal: false });
-    }
-    if (softLimit > 0 && turns >= softLimit + SOFT_GRACE_TURNS) {
-      return { content, cancelled: false, exhausted: false, blocked: true, error: `Cost-saver turn budget exceeded (${turns} turns); stopping to bound cost. Re-run with the toggle off or a higher budget for longer tasks.`, productivelyChanged, usage, turns };
     }
 
     Object.assign(scope, { requestId: randomUUID(), turnId: `${deps.runId}:${turns + 1}`, requestAttempt: turnRetries + 1 });

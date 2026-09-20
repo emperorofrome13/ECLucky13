@@ -77,7 +77,7 @@ test('historyDiet uses knobs normally, saver preset when on', async () => {
   assert.deepEqual(cm.historyDiet({ historyToolFull: 50 }, true), { full: 2, chars: 200, callChars: 100 });
 });
 
-test('soft turn budget warns once then finishes blocked with wrap-up', async () => {
+test('soft turn budget warns once and never force-stops', async () => {
   const loop = await import('../src/server/agent/loop.ts');
   const cm2 = await import('../src/server/agent/context-manager.ts');
   const root = fs.mkdtempSync(path.resolve('test-output/lucky-budget-'));
@@ -90,16 +90,18 @@ test('soft turn budget warns once then finishes blocked with wrap-up', async () 
   const conversation = cm2.newConversation();
   const outcome = await loop.runMainLoop({
     runId: 'budget', sessionId: 'budget', workspace: root, mode: 'code', signal: new AbortController().signal,
-    provider, contextWindow: 32000, requestedMaxTokens: 1000, autoCompact: false, maxIterations: 0,
+    provider, contextWindow: 32000, requestedMaxTokens: 1000, autoCompact: false, maxIterations: 12,
     repeatedFailureLimit: 3, costSaver: true, softTurnLimit: 4, contextTools: {},
     journalEnv: { workspacePath: root, runId: 'budget', sessionId: 'budget', reviewMode: false },
     conversation, systemBlocks: ['Test saver'], task: 'read the note', emit: (type, data) => events.push({ type, data }),
   });
-  assert.equal(outcome.blocked, true);
-  assert.match(outcome.error || '', /turn budget/);
-  assert.ok(outcome.turns >= 9 && outcome.turns <= 10, `turns=${outcome.turns}`);
-  assert.ok(events.some((e) => e.type === 'error' && !e.data.fatal && /turn budget reached/.test(e.data.message)), 'warns once');
-  assert.ok(conversation.messages.some((m) => m.role === 'user' && /turn budget reached/.test(m.content || '')), 'warning visible in history');
+  // Ran past the old force-stop point (4+5) to the maxIterations end: never blocked by budget.
+  assert.equal(outcome.turns, 12);
+  assert.equal(outcome.blocked, false);
+  assert.ok(!/turn budget exceeded/.test(outcome.error || ''));
+  const warns = events.filter((e) => e.type === 'error' && !e.data.fatal && /Cost-saver note/.test(e.data.message));
+  assert.equal(warns.length, 1);
+  assert.ok(conversation.messages.some((m) => m.role === 'user' && /Cost-saver note/.test(m.content || '')), 'warning visible in history');
 });
 
 test('soft budget off leaves long runs alone', async () => {

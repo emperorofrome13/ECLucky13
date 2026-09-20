@@ -1,10 +1,28 @@
 # ECLucky13 — HANDOFF
 
-**Current version:** v1.24 (package 1.0.24)
-**Date:** 2026-09-19
-**Status:** Saver bundle shipped (diet preset + turn budget); live re-grade proves opencode-parity cost. Supersedes v1.23 for saver behavior.
+**Current version:** v1.25 (package 1.0.25)
+**Date:** 2026-09-20
+**Status:** Turn budget is warn-only (no force-stop) per decision. Supersedes v1.24 for budget behavior.
 
-## v1.24 saver bundle: diet preset + turn budget (this increment)
+## v1.25 warn-only budget (this increment)
+
+- The v1.24 force-stop (warn at N, `blocked` at N+5) is removed: the turn budget now warns
+  once (visible user message + non-fatal event) and the run always continues to its own
+  conclusion. Nothing can cut a run off for token reasons anymore; the toggle, diet
+  preset, budget setting and cache marks are unchanged.
+- Files: agent/loop.ts (removed force-stop + grace constant, reworded notice), test/
+  lucky-costsaver.test.mjs (budget test now proves 12 turns run past a budget of 4 with
+  exactly one warning and no block). Backups under `backup/v118-perf/` (`*-v122.*`).
+
+## Verification evidence (v1.25)
+
+- `npm.cmd run typecheck -- --incremental false`: PASS.
+- `npm.cmd test`: **179/179**.
+- `npm.cmd run build`: PASS, Next 14.2.35.
+- `node test/lucky-ui.mjs` (isolated dev 3314): **9/9**.
+- NOTE: relaunch quickstart to serve v1.25 (auto-rebuilds).
+
+## v1.24 saver bundle (superseded above for budget behavior)
 
 Cost-saver mode (Settings > Limits) now does three things when ON, on every provider
 (only the cache marks stay remote-only):

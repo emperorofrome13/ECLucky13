@@ -112,7 +112,7 @@ const composer = page.locator('.composer-bar textarea');
 const tasks = () => page.getByRole('button', { name: /^Tasks ·/ }).click();
 try {
   await page.goto(base);
-  assert.match(await page.locator('.brand').textContent(), /1\.24/, 'Parent must rebuild/start v1.24; the running app is stale.');
+  assert.match(await page.locator('.brand').textContent(), /1\.25/, 'Parent must rebuild/start v1.25; the running app is stale.');
   await wait(async () => !(await page.getByRole('button', { name: 'Attach files' }).isDisabled()), 'Hydration did not finish');
   const openLimits = async () => {
     await page.getByRole('button', { name: 'Settings', exact: true }).click();

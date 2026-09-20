@@ -105,7 +105,7 @@ try {
   }, { workspace, fixtureBase });
   await page.goto(base);
   await page.getByRole('button', { name: 'Attach files', exact: true }).waitFor();
-  assert.match(await page.locator('.brand').innerText(), /1\.24/);
+  assert.match(await page.locator('.brand').innerText(), /1\.25/);
   await openSettings('MCP servers');
   await page.getByRole('button', { name: 'Add MCP server', exact: true }).click();
   await page.getByLabel('Server name', { exact: true }).fill(name);

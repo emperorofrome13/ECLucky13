@@ -15,7 +15,7 @@ import MessageContent, { CopyButton } from './MessageContent';
 import AttachmentList, { recordAttachments, type UIAttachment } from './AttachmentList';
 import TaskBoard, { type TaskRun, isActiveTask } from './TaskBoard';
 
-export const APP_VERSION = '1.24';
+export const APP_VERSION = '1.25';
 const SKEY = 'eclucky13.settings.v1';
 
 function newId(p: string) { return p + '_' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36); }
