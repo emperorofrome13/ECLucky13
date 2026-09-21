@@ -1,8 +1,42 @@
 # ECLucky13 — HANDOFF
 
-**Current version:** v1.29 (package 1.0.29)
+**Current version:** v1.30 (package 1.0.30)
 **Date:** 2026-09-21
-**Status:** Stalls never stop a run (unbounded recoveries). Supersedes v1.28.
+**Status:** Parallel sessions verified; reattach hardened; inspector tabs fixed. Supersedes v1.29.
+
+## v1.30 parallel sessions + inspector fixes (this increment)
+
+- **Parallel sessions, different workspaces: confirmed working.** Backend runs one
+  task per session and serializes per workspace, but separate workspaces drain
+  independently. Proven live on an isolated server with two sessions in two
+  workspaces against a local model: both `generating` simultaneously (~90s
+  overlap), the first finished while the second continued undisturbed, both
+  answered correctly. Switching sessions/workspaces only detaches the live feed;
+  nothing is ever cancelled by navigating. Background runs stay visible in Tasks.
+- **Reattach on open hardened.** Opening a session now subscribes to the live
+  feed only when its latest run is still active (`isTerminal` guard) — finished
+  runs no longer replay tens of thousands of stored events for state the history
+  already shows. Proven live: opened a session mid-run, statusbar showed
+  `GENERATING · elapsed 6s` with reasoning streaming and Stop armed.
+- **Inspector tabs fixed.** The Activity/Plan/Auto-prompts buttons were 44px
+  bars wrapping 2+1 (`flex-wrap` + chunky `.btn`). Now one compact 33px
+  underline-tab row (single line, ellipsis-safe labels), matching the existing
+  tab pattern. Proven by measured bboxes (3 buttons, same y, h=33).
+- **Inspector autoscroll fixed.** The autoprompt/activity panels had no scroll
+  management (and activity had a nested independent scroller). All three tabs
+  now share one scroll contract with the chat feed: follow new output while
+  pinned to the bottom, pause on scroll-up. The nested activity scroller was
+  removed so the section is the single scroller.
+- Files: components/Ec12App.tsx (guard, tabs, scroll), app/globals.css (tab
+  row). Scratch provers (ignored): `test-output/par-ui.mjs`,
+  `E:/test-output/grade-harness/par-verify.mjs`.
+
+## Verification evidence (v1.30)
+
+- Live parallel proof: OVERLAP true, both terminal, both correct (see above).
+- Live UI proof: tabs one row + reattach GENERATING + zero page errors.
+- Full suite serial: **189/189**. Typecheck PASS, build PASS.
+- NOTE: relaunch quickstart to serve v1.30 (auto-rebuilds).
 
 ## v1.29 burn forever (this increment)
 

@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DEFAULT_SETTINGS, normalizeSettings, type EC12Settings, type Mode } from '@/shared/settings-schema';
 import { STAGE_DEFS } from '@/shared/stage-definitions';
 import type { ChangeRecord, RunSummary, TokenUsage } from '@/shared/contracts';
-import { zeroUsage } from '@/shared/contracts';
+import { zeroUsage, isTerminal } from '@/shared/contracts';
 import { lineDiff } from '@/shared/diff';
 import SettingsDrawer from './SettingsDrawer';
 import FileTree from './FileTree';
@@ -16,7 +16,7 @@ import AttachmentList, { recordAttachments, type UIAttachment } from './Attachme
 import TaskBoard, { type TaskRun, isActiveTask } from './TaskBoard';
 import LuckyPanel from './LuckyPanel';
 
-export const APP_VERSION = '1.29';
+export const APP_VERSION = '1.30';
 const SKEY = 'eclucky13.settings.v1';
 
 function newId(p: string) { return p + '_' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36); }
@@ -181,6 +181,8 @@ interface RequestRow { eventId: string; requestId: string; at: number; messageCo
   const [activity, setActivity] = useState<Activity[]>([]);
   const [feedLimit, setFeedLimit] = useState(60);
   const [atBottom, setAtBottom] = useState(true);
+  const inspRef = useRef<HTMLElement | null>(null);
+  const [inspAtBottom, setInspAtBottom] = useState(true);
   const [changes, setChanges] = useState<ChangeRecord[]>([]);
   const [diffs, setDiffs] = useState<Record<string, string>>({});
   const [verification, setVerification] = useState<VRow[]>([]);
@@ -401,7 +403,12 @@ interface RequestRow { eventId: string; requestId: string; at: number; messageCo
     fetch('/api/runs?sessionId=' + encodeURIComponent(sessionId) + '&limit=1').then((r) => r.json()).then((d) => {
       if (disposed || generation !== runGeneration.current || sending.current || sessionIdRef.current !== sessionId || runIdRef.current || !d.runs?.length) return;
       const latest = d.runs[0];
-      setRunId(latest.id); runIdRef.current = latest.id; setRunState(latest.state);
+      setRunState(latest.state);
+      // Reattach the live feed only when the latest run is still active. Replaying
+      // a finished run's whole event log is pure cost (tens of thousands of events)
+      // for a state history already shows; terminal runs need no subscription.
+      if (isTerminal(latest.state)) return;
+      setRunId(latest.id); runIdRef.current = latest.id;
       setCurrentTask(latest.task || ''); setCurrentAttachments(recordAttachments(latest)); setConfiguredModel(latest.configuredModel || '');
       startedAt.current = Date.parse(latest.createdAt); lastSeq.current = 0; seen.current.clear(); subscribeRef.current(latest.id);
     }).catch(() => { if (!disposed && generation === runGeneration.current) setError('Could not restore this session. Reload after the app reconnects.'); });
@@ -432,6 +439,13 @@ interface RequestRow { eventId: string; requestId: string; at: number; messageCo
     return () => { disposed = true; clearInterval(timer); };
   }, [runId]);
   useEffect(() => { if (atBottom) feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight }); }, [assistant, stageBuffers, summary, question, atBottom]);
+  // Inspector follows new stage/activity output while the user stays pinned to the
+  // bottom; scrolling up pauses the follow (same contract as the chat feed).
+  const onInspScroll = useCallback((e: React.UIEvent<HTMLElement>) => {
+    const el = e.currentTarget;
+    setInspAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 60);
+  }, []);
+  useEffect(() => { if (inspAtBottom && inspRef.current) inspRef.current.scrollTo({ top: inspRef.current.scrollHeight }); }, [stageBuffers, activity, stages, requests, agentTab, inspAtBottom]);
 
   const browseNative = async () => {
     setBrowseBusy(true);
@@ -568,7 +582,7 @@ interface RequestRow { eventId: string; requestId: string; at: number; messageCo
     if (dirtyFiles.length && !window.confirm(`Discard unsaved changes in ${dirtyFiles.length} file(s)?`)) return false;
     draftRef.current[sessionIdRef.current] = { task, attachments };
     suspendRun(); historyRequest.current++; fileEpoch.current++; fileRevisions.current = {}; contentRef.current = {}; savesInFlight.current.clear();
-    setHistory([]); setHistoryBefore(null); setHistoryBusy(false); setHistoryError(''); setError(''); setReasoning(''); setStageBuffers({}); setQuestion(null); setAnswer(''); setAnswerBusy(false); setPlan([]); setCurrentTask(''); setTask(''); setContextUsage(null); setContextScope('main'); setCompactionNotice(''); setSessionId(sid); sessionIdRef.current = sid; setRunState('idle'); setRunDetail(''); setProviderPhase('idle'); setConfiguredModel(''); setEffectiveModel(''); setAssistant(''); setActivity([]); setChanges([]); setDiffs({}); setSelectedChange(''); setDiffError(''); setVerification([]); setStages([]); setSummary(null); setUsage(zeroUsage()); setUsageKnown(false); setUsageIncomplete(false); setOpenPaths([]); setContents({}); setDirty({}); setHashes({}); setActivePath(''); setView('agent'); setSaving({}); setSaveError({}); setMentionOpen(false); setAtBottom(true); setFeedLimit(60);
+    setHistory([]); setHistoryBefore(null); setHistoryBusy(false); setHistoryError(''); setError(''); setReasoning(''); setStageBuffers({}); setQuestion(null); setAnswer(''); setAnswerBusy(false); setPlan([]); setCurrentTask(''); setTask(''); setContextUsage(null); setContextScope('main'); setCompactionNotice(''); setSessionId(sid); sessionIdRef.current = sid; setRunState('idle'); setRunDetail(''); setProviderPhase('idle'); setConfiguredModel(''); setEffectiveModel(''); setAssistant(''); setActivity([]); setChanges([]); setDiffs({}); setSelectedChange(''); setDiffError(''); setVerification([]); setStages([]); setSummary(null); setUsage(zeroUsage()); setUsageKnown(false); setUsageIncomplete(false); setOpenPaths([]); setContents({}); setDirty({}); setHashes({}); setActivePath(''); setView('agent'); setSaving({}); setSaveError({}); setMentionOpen(false); setAtBottom(true); setInspAtBottom(true); setFeedLimit(60);
     const draft = draftRef.current[sid];
     setTask(draft?.task || ''); setAttachments(draft?.attachments || []); setCurrentAttachments([]); setUploadError('');
     setFileLoading({}); setFileErrors({}); fileLoads.current = {}; setRequests([]);
@@ -884,9 +898,9 @@ interface RequestRow { eventId: string; requestId: string; at: number; messageCo
         {inspectorOpen && <div className="drag-handle" role="separator" tabIndex={0} aria-orientation="vertical" aria-label="Resize inspector" aria-valuenow={rightW} aria-valuemin={280} aria-valuemax={640} onMouseDown={onDragStart('right')} onKeyDown={onKeyDownHandle('right')} title="drag to resize; ArrowLeft/Right adjust" />}
         <aside className={'agent-col compact-inspector' + (inspectorOpen ? '' : ' inspector-hidden')} aria-label="Agent inspector">
           <div className="agent-tabs" role="tablist" aria-label="Agent panels">
-            {(['activity', 'plan', 'autoprompts'] as const).map((tab) => <button key={tab} role="tab" aria-selected={agentTab === tab} aria-controls={'agent-' + tab} className={'btn sm' + (agentTab === tab ? ' primary' : ' ghost')} onClick={() => setAgentTab(tab)}>{tab === 'autoprompts' ? 'Auto-prompts' : tab === 'plan' ? 'Plan & context' : 'Activity'}</button>)}
+            {(['activity', 'plan', 'autoprompts'] as const).map((tab) => <button key={tab} role="tab" aria-selected={agentTab === tab} aria-controls={'agent-' + tab} className={'btn sm' + (agentTab === tab ? ' primary' : ' ghost')} onClick={() => setAgentTab(tab)}>{tab === 'autoprompts' ? 'Auto-prompts' : tab === 'plan' ? 'Plan' : 'Activity'}</button>)}
           </div>
-          {agentTab === 'autoprompts' && <section id="agent-autoprompts" role="tabpanel" className="agent-tab-content">
+          {agentTab === 'autoprompts' && <section id="agent-autoprompts" role="tabpanel" className="agent-tab-content" ref={inspRef} onScroll={onInspScroll}>
           <div className="panel-head"><span>Next-run pipeline</span>
             <label style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 6, textTransform: 'none', letterSpacing: 0 }} title={running ? 'The stage list is locked while a task runs; it applies to the next run.' : undefined}>
               <input type="checkbox" checked={settings.autoPrompt.enabled} disabled={running} onChange={(e) => setSettings((s) => ({ ...s, autoPrompt: { ...s.autoPrompt, enabled: e.target.checked } }))} style={{ width: 'auto', accentColor: 'var(--accent)' }} />
@@ -909,16 +923,16 @@ interface RequestRow { eventId: string; requestId: string; at: number; messageCo
             {Object.entries(stageBuffers).map(([key, buffer]) => <div className="tool-card stage-card" key={key}><b>{buffer.label || key}</b><details open><summary className="hint">Stage reply</summary><MessageContent text={buffer.assistant || '(no stage output yet)'} /></details>{buffer.reasoning && <details><summary className="hint">Stage reasoning</summary><pre className="tool-out" style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{buffer.reasoning.slice(-6000)}</pre></details>}</div>)}
             {stages.map((s) => <div className="tool-card" key={s.stage}><b>{s.stage} · {s.passed ? 'PASS' : 'FAIL'}</b><p>{s.summary}</p></div>)}
           </section>}
-          {agentTab === 'plan' && <section id="agent-plan" role="tabpanel" className="agent-tab-content">
+          {agentTab === 'plan' && <section id="agent-plan" role="tabpanel" className="agent-tab-content" ref={inspRef} onScroll={onInspScroll}>
           <div style={{ padding: 10 }}>
             <div className="hint" role="status">{contextUsage ? `Context scope: ${contextScope === 'main' ? 'main answer' : 'stage ' + contextScope} · ` : 'Context usage appears here when the run reports it. '}{contextUsage ? `${contextUsage.usedTokens.toLocaleString()} / ${contextUsage.contextWindow.toLocaleString()} tokens ${contextUsage.estimated === false ? '(provider reported)' : '(estimated, includes reasoning)'} · auto-compact at ${contextUsage.autoCompactAtPercent || settings.provider.autoCompactAtPercent}%` : 'Token counts are unknown until the run reports them. No fabricated zeros.'}</div>
             {contextUsage && <><progress aria-label="Context usage" value={contextUsage.usedTokens} max={contextUsage.contextWindow} style={{ width: '100%' }} /><div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 5 }}><span className="hint">Available output: {contextUsage.maxTokens.toLocaleString()} tokens</span><button className="btn sm" onClick={compactNow} disabled={running || !sessionId}>Compact now</button></div>{compactionNotice && <div className="hint" style={{ color: 'var(--good)', marginTop: 5 }}>{compactionNotice}</div>}</>}
             {plan.length === 0 && <p className="hint">The agent’s plan appears here when it starts planning.</p>}{plan.length > 0 && <><b>Plan</b><ol>{plan.map((step, i) => <li key={i}>{step}</li>)}</ol></>}
           </div>
           </section>}
-          {agentTab === 'activity' && <section id="agent-activity" role="tabpanel" className="agent-tab-content">
+          {agentTab === 'activity' && <section id="agent-activity" role="tabpanel" className="agent-tab-content" ref={inspRef} onScroll={onInspScroll}>
           <div className="panel-head"><span>Activity</span><span className="hint">{activity.filter((a) => a.done).length}/{activity.length}</span></div>
-          <div className="agent-scroll" style={{ overflow: 'auto', flex: 1 }}>
+          <div style={{ flex: 1 }}>
             {activity.length === 0 && <div className="hint">Tool calls appear here with duration and outcome.</div>}
             {activity.slice(0, feedLimit).map((a) => (
               <div className={'tool-card' + (a.done ? (a.ok ? ' ok' : ' bad') : '')} key={a.id}>

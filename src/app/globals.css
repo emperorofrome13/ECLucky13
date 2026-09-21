@@ -419,8 +419,12 @@ legend { font-size: 10px; text-transform: uppercase; letter-spacing: 0.16em; col
 }
 
 /* Each agent panel gets the full available height rather than competing vertically. */
-.agent-tabs { display: flex; gap: 8px; padding: 10px; flex-wrap: wrap; border-bottom: 1px solid var(--line); }
-.agent-tabs .btn { min-height: 44px; font-size: 14px; }
+.agent-tabs { display: flex; gap: 0; padding: 8px 10px 0; border-bottom: 1px solid var(--line); flex: 0 0 auto; flex-wrap: nowrap; }
+.agent-tabs .btn { flex: 1 1 0; min-width: 0; min-height: 0; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; padding: 9px 4px; border: 0; border-radius: 0; background: transparent; box-shadow: none; clip-path: none; color: var(--faint); border-bottom: 2px solid transparent; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.agent-tabs .btn.primary { color: var(--accent); border-bottom-color: var(--accent); background: transparent; font-weight: 400; }
+.agent-tabs .btn.primary:hover { background: transparent; color: var(--accent); filter: none; }
+.agent-tabs .btn.ghost { color: var(--faint); }
+.agent-tabs .btn.ghost:hover { color: var(--text); border-color: transparent; }
 .agent-tab-content { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; }
 .agent-tab-content label { min-height: 36px; }
 
