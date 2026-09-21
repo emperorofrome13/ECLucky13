@@ -32,7 +32,9 @@ function loopDeps(provider, extra = {}) {
 }
 
 test('a stuck run blocks with the failing tool and its last error attached', async () => {
-  const outcome = await loop.runMainLoop(loopDeps(stuckProvider()));
+  // Explicit bound of 1: the default (0) recovers forever, so the bounded path is
+  // exercised directly. v128 covers the recovery itself.
+  const outcome = await loop.runMainLoop(loopDeps(stuckProvider(), { blockRecoveryAttempts: 1 }));
   assert.equal(outcome.blocked, true);
   assert.equal(outcome.blockedTool, 'shell_command');
   assert.ok((outcome.lastError || '').length > 0, 'last error must travel with the outcome');

@@ -119,19 +119,20 @@ test('non-retryable stream error (auth) still fails the run immediately', async 
   assert.equal(provider.calls, 1);
 });
 
-test('no-progress watchdog blocks a varied-failure loop but any success resets it', async () => {
+test('no-progress watchdog recovers a varied-failure loop but any success resets it', async () => {
   // All tool calls fail with DIFFERENT, deterministic errors (dodges repeated-failure detection
   // on every OS — no process spawning involved).
   const responses = Array.from({ length: 6 }, (_, i) => ({
     toolCalls: [{ name: 'read_file', args: { path: `missing-${i}.txt` } }],
   }));
   const provider = fakeProvider(responses);
-  // blockRecoveryAttempts: 0 isolates the watchdog (v1.28 recovery would continue first).
-  const { deps } = baseDeps(provider, { noProgressTurnLimit: 5, blockRecoveryAttempts: 0 });
+  // v1.29: the watchdog recovers instead of stopping; maxIterations bounds this fixture.
+  const { deps, events } = baseDeps(provider, { noProgressTurnLimit: 5, maxIterations: 8 });
   const outcome = await loop.runMainLoop(deps);
-  assert.equal(outcome.blocked, true);
-  assert.match(outcome.error || '', /No progress/);
-  assert.equal(provider.calls, 5);
+  assert.equal(outcome.blocked, false, 'a stall must never stop the run');
+  assert.equal(outcome.exhausted, true, 'the iteration budget ends it');
+  assert.ok(provider.calls > 5, `run continued past the first stall (calls: ${provider.calls})`);
+  assert.ok(events.some((e) => e.type === 'error' && /run continues/.test(e.data.message)), 'recovery announced');
 
   // With the guard off (0), unlimited iterations are honored — cancellation is the only stop.
   // The repeating tail response SUCCEEDS (list_files), so neither the watchdog (off) nor the

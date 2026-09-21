@@ -58,7 +58,8 @@ async function* streamRequest(provider: OpenAICompatProvider, messages: ChatMess
   }
 }
 
-class ProgressGuard {
+/** Watchdog counters. Exported for unit tests; the main loop owns the only live instance. */
+export class ProgressGuard {
   private failures = new Map<string, number>();
   private observations = new Set<string>();
   private stalled = 0;
@@ -116,7 +117,8 @@ export interface LoopDeps {
   turnRecoveryAttempts?: number;
   /** Consecutive all-failing turns allowed before blocking (0 disables the watchdog). */
   noProgressTurnLimit?: number;
-  /** Times a stuck run is handed its block info and continues instead of stopping (0 = block at once). */
+  /** Times a stuck run is handed its block info and continues. 0 = unlimited: a
+   * stall never stops the run (only Stop, an answer, or the iteration budget ends it). */
   blockRecoveryAttempts?: number;
   duplicateObservationLimit?: number;
   maxRequestAttempts?: number;
@@ -193,7 +195,7 @@ export async function runMainLoop(deps: LoopDeps): Promise<LoopOutcome> {
   let invalidRecovery = 0;       // malformed-tool-call recoveries used this run
   let turnRetries = 0;           // stream-error re-requests for the CURRENT turn
   let blockRecoveries = 0;       // stuck-pattern recoveries used this run
-  const maxBlockRecoveries = Math.min(Math.max(0, deps.blockRecoveryAttempts ?? 2), 10);
+  const maxBlockRecoveries = (() => { const n = deps.blockRecoveryAttempts ?? 0; return n <= 0 ? Number.POSITIVE_INFINITY : Math.min(n, 10); })();
 
   const turnRetryBudget = Math.min(Math.max(0, deps.turnRecoveryAttempts ?? 3), Math.max(0, (deps.maxRequestAttempts ?? 4) - 1));
   const MAX_CUTOFF_RECOVERY = deps.outputContinuationLimit ?? 4;
@@ -368,12 +370,13 @@ export async function runMainLoop(deps: LoopDeps): Promise<LoopOutcome> {
         blockRecoveries++;
         const tool = lastFail?.name || 'unknown tool';
         const err = (lastFail?.error || 'no error text captured').slice(0, 500);
+        const tag = maxBlockRecoveries === Number.POSITIVE_INFINITY ? `recovery ${blockRecoveries} (unlimited)` : `recovery ${blockRecoveries}/${maxBlockRecoveries}`;
         deps.conversation.messages.push({ role: 'user', content:
-          `SYSTEM: You are going in circles and I am stepping in instead of stopping the run (recovery ${blockRecoveries}/${maxBlockRecoveries}).\n` +
+          `SYSTEM: You are going in circles and I am stepping in instead of stopping the run (${tag}).\n` +
           `Stall pattern: ${stallReason}\nFailing tool: ${tool}.\nLast error: ${err}\n` +
           `Diagnose BEFORE your next tool call: re-read that error, run one small probe if needed, fix quoting/paths/arguments, or take a genuinely different approach. ` +
           `Do NOT emit the same failing call unchanged — that is what triggered this. If the task itself is impossible as stated, say so plainly instead of looping.` });
-        emit('error', { message: `Stuck pattern (${stallReason}). Recovery ${blockRecoveries}/${maxBlockRecoveries}: block info sent back to the model, run continues.`, fatal: false });
+        emit('error', { message: `Stuck pattern (${stallReason}). ${tag[0].toUpperCase() + tag.slice(1)}: block info sent back to the model, run continues.`, fatal: false });
         progress.reset();
         continue;
       }

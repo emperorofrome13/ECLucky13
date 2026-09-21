@@ -351,21 +351,22 @@ test('production stream() assembles two overlapping tool_deltas (different indic
   } finally { server.close(); }
 });
 
-test('main-loop ProgressGuard blocks a duplicate-success loop (identical successful observations every turn)', async () => {
+test('main-loop ProgressGuard fires recoveries on a duplicate-success loop (never stops it)', async () => {
   const c = cm.newConversation();
   fs.writeFileSync(path.join(root, 'dup.txt'), 'same content every read');
   const provider = fake(Array.from({ length: 10 }, () => [tool('read_file', { path: 'dup.txt' })]));
   const outcome = await loop.runMainLoop({
     provider, signal: new AbortController().signal, contextWindow: 32000, requestedMaxTokens: 1000,
-    maxIterations: 0, repeatedFailureLimit: 3, noProgressTurnLimit: 0, duplicateObservationLimit: 2,
-    blockRecoveryAttempts: 0, // isolate the guard: v1.28 recovery would continue first
+    maxIterations: 6, repeatedFailureLimit: 3, noProgressTurnLimit: 0, duplicateObservationLimit: 2,
+    // Default (unlimited recoveries): the guard fires, the run continues, the budget ends it.
     autoCompact: true, autoCompactAtPercent: 80, keepRecentTurns: 4,
     contextTools: {}, journalEnv: { workspacePath: root, runId: 'lucky', sessionId: 'lucky', reviewMode: false },
     systemBlocks: ['Fixture instructions'], task: 'read the file', conversation: c, emit: () => {},
   });
-  assert.equal(outcome.blocked, true, 'expected blocked, got error: ' + (outcome.error || '(none)') + ' turns=' + outcome.turns);
-  assert.match(outcome.error, /No progress: 2 consecutive turns produced no new observations/);
-  assert.ok(outcome.turns <= 3, 'blocked promptly instead of looping forever');
+  assert.equal(outcome.blocked, false, 'a stall must never stop the run');
+  assert.equal(outcome.exhausted, true, 'the iteration budget ends it');
+  assert.ok(c.messages.some((m) => m.role === 'user' && String(m.content).includes('going in circles')), 'guard fired a recovery note');
+  assert.ok(outcome.turns <= 6, 'budget honored instead of looping forever');
 });
 
 test('queued run continues automatically on the same workspace after the active run finishes', async () => {

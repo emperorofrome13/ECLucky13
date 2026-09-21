@@ -1,6 +1,6 @@
 {
   "name": "eclucky13-desktop",
-  "version": "1.0.28",
+  "version": "1.0.29",
   "description": "ECLucky13 desktop shell (Electron): native window, tray, first-run setup, server lifecycle.",
   "main": "main.js",
   "scripts": {

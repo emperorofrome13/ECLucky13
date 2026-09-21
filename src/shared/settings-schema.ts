@@ -100,7 +100,9 @@ export interface AgentSettings {
   /** v1.13: consecutive turns where EVERY tool call failed before blocking (0 = off).
    * Unlimited iterations are intentional: any successful tool call resets this counter. */
   noProgressTurnLimit: number;
-  /** v1.28: times a stuck run is handed its block info and allowed to continue (0 = block at once). */
+  /** v1.28: times a stuck run is handed its block info and allowed to continue.
+   * v1.29: 0 = unlimited recoveries — a stall never stops the run (only Stop,
+   * an answer, or the iteration budget ends it). */
   blockRecoveryAttempts: number;
   maxRequestAttempts: number;
   duplicateObservationLimit: number;
@@ -133,7 +135,7 @@ export const DEFAULT_SETTINGS: EC12Settings = {
     requestTimeoutMs: 1800000, retries: 3, inputCostPer1M: 0, outputCostPer1M: 0, currency: '$',
     autoCompact: true, autoCompactAtPercent: 80, keepRecentTurns: 4, autoModelLimits: true, reasoningReplay: 'auto', costSaver: false, saverTurnBudget: 60,
   },
-  agent: { maxIterations: 0, stageMaxIterations: 0, reviewBeforeApply: false, autoAcceptChanges: true, repeatedFailureLimit: 3, stageRepairAttempts: 1, turnRecoveryAttempts: 3, noProgressTurnLimit: 20, maxRequestAttempts: 4, duplicateObservationLimit: 20, outputContinuationLimit: 4, stageOutputContinuationLimit: 2, protocolRecoveryAttempts: 3, blockRecoveryAttempts: 2 },
+  agent: { maxIterations: 0, stageMaxIterations: 0, reviewBeforeApply: false, autoAcceptChanges: true, repeatedFailureLimit: 3, stageRepairAttempts: 1, turnRecoveryAttempts: 3, noProgressTurnLimit: 20, maxRequestAttempts: 4, duplicateObservationLimit: 20, outputContinuationLimit: 4, stageOutputContinuationLimit: 2, protocolRecoveryAttempts: 3, blockRecoveryAttempts: 0 },
   autoPrompt: { enabled: true, stages: ['review', 'completeness', 'senior_review'] },
   contextTools: { ...DEFAULT_CONTEXT_TOOL_LIMITS, rtk: false, ponytail: true, context7: false, codegraph: false, search: false, skills: true, context7ApiKey: '' },
   workspace: { id: '', path: '' },
@@ -202,7 +204,7 @@ export function normalizeSettings(input: any): EC12Settings {
       stageRepairAttempts: int(a.stageRepairAttempts, 1, 0, 5),
       turnRecoveryAttempts: int(a.turnRecoveryAttempts, 3, 0, 10),
       noProgressTurnLimit: int(a.noProgressTurnLimit, 20),
-      blockRecoveryAttempts: int(a.blockRecoveryAttempts, 2, 0, 10),
+      blockRecoveryAttempts: int(a.blockRecoveryAttempts, 0, 0, 10),
       maxRequestAttempts: int(a.maxRequestAttempts, 4, 1),
       duplicateObservationLimit: int(a.duplicateObservationLimit, 20),
       outputContinuationLimit: int(a.outputContinuationLimit, 4),

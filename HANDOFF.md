@@ -1,8 +1,29 @@
 # ECLucky13 — HANDOFF
 
-**Current version:** v1.28 (package 1.0.28)
+**Current version:** v1.29 (package 1.0.29)
 **Date:** 2026-09-21
-**Status:** Stuck runs recover in-loop instead of stopping. Supersedes v1.27.
+**Status:** Stalls never stop a run (unbounded recoveries). Supersedes v1.28.
+
+## v1.29 burn forever (this increment)
+
+- Per decision ("runs shouldn't be stopped by this, it can burn forever"):
+  `agent.blockRecoveryAttempts` now defaults to **0 = unlimited recoveries**. A
+  watchdog stall always hands the block info back to the model and continues;
+  only Stop, an answer, or the iteration budget ends a run. Set it to N (>0) to
+  restore the v1.28 bound (stop after N recoveries with explanation + memo).
+- ProgressGuard is now exported for direct unit tests. The two old stop-at-once
+  integration tests were rewritten to the new contract (guard fires recoveries,
+  budget ends the run); the v1.27 blocked message + failure memo still serve the
+  exhaustion path and any explicitly bounded runs.
+- Files: shared/settings-schema.ts (default 0), agent/loop.ts (unbounded cap,
+  exported guard), test/v128-recover.test.mjs (rewritten: never-stops,
+  explicit bound, self-fix, default 0, guard units), test/lucky-workflows +
+  test/v113-resilience (new-contract assertions).
+
+## Verification evidence (v1.29)
+
+- New/updated tests pass; full suite serial: **189/189**. Typecheck PASS, build PASS.
+- NOTE: relaunch quickstart to serve v1.29 (auto-rebuilds).
 
 ## v1.28 recover, don't stop (this increment)
 
