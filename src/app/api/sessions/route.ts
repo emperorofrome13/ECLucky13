@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 function view(session: ReturnType<typeof listSessions>[number]) {
-  return { id: session.id, title: session.title, pinned: !!session.pinned, workspaceId: session.workspaceId, createdAt: session.createdAt, updatedAt: session.updatedAt, turnCount: session.conversation.messages.filter((m) => m.role === 'user').length, originalTask: session.conversation.originalTask || '' };
+  return { id: session.id, title: session.title, pinned: !!session.pinned, workspaceId: session.workspaceId, workspacePath: session.workspacePath, createdAt: session.createdAt, updatedAt: session.updatedAt, turnCount: session.conversation.messages.filter((m) => m.role === 'user').length, originalTask: session.conversation.originalTask || '' };
 }
 
 export function GET(req: Request) {

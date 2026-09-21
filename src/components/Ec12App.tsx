@@ -16,7 +16,7 @@ import AttachmentList, { recordAttachments, type UIAttachment } from './Attachme
 import TaskBoard, { type TaskRun, isActiveTask } from './TaskBoard';
 import LuckyPanel from './LuckyPanel';
 
-export const APP_VERSION = '1.30';
+export const APP_VERSION = '1.31';
 const SKEY = 'eclucky13.settings.v1';
 
 function newId(p: string) { return p + '_' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36); }
@@ -24,7 +24,7 @@ interface Activity { id: string; toolCallId: string; name: string; argsPreview: 
 interface VRow { checkId: string; name: string; status: string; exitCode?: number | null; preview?: string }
 interface HistoryRow { id: string; task?: string; state: string; outcome?: string; finalText?: string; createdAt: string; attachments?: UIAttachment[]; attachmentIds?: string[] }
 interface StageBuffer { label: string; assistant: string; reasoning: string }
-interface SessionItem { id: string; title: string; pinned: boolean; updatedAt: string; turnCount: number; originalTask: string }
+interface SessionItem { id: string; title: string; pinned: boolean; updatedAt: string; turnCount: number; originalTask: string; workspaceId: string; workspacePath: string }
 
 export default function Ec12App() {
   const [settings, setSettings] = useState<EC12Settings>(DEFAULT_SETTINGS);
@@ -219,13 +219,27 @@ interface RequestRow { eventId: string; requestId: string; at: number; messageCo
   const sessionSearchRequest = useRef(0);
   const loadSessions = useCallback(async (query = sessionSearch) => {
     const request = ++sessionSearchRequest.current;
-    if (!settings.workspace.id) { setSessions([]); return; }
+    // Global list across workspaces: switching folders must never hide sessions.
     try {
-      const r = await fetch(`/api/sessions?workspaceId=${encodeURIComponent(settings.workspace.id)}&q=${encodeURIComponent(query)}`);
+      const r = await fetch(`/api/sessions?q=${encodeURIComponent(query)}`);
       const d = await r.json(); if (d.ok && request === sessionSearchRequest.current) setSessions(d.sessions || []);
     } catch { setError('Could not load saved sessions.'); }
-  }, [settings.workspace.id, sessionSearch]);
+  }, [sessionSearch]);
   useEffect(() => { if (hydrated) void loadSessions(); }, [hydrated, loadSessions]);
+  // Sessions grouped by workspace (current first) for the sidebar.
+  const groupedSessions = useMemo(() => {
+    const byWs = new Map<string, { id: string; path: string; items: SessionItem[] }>();
+    for (const s of sessions) {
+      const key = s.workspaceId || 'unknown';
+      let g = byWs.get(key);
+      if (!g) { g = { id: key, path: s.workspacePath || key, items: [] }; byWs.set(key, g); }
+      g.items.push(s);
+    }
+    const groups = [...byWs.values()];
+    groups.sort((a, b) => (a.id === settings.workspace.id ? -1 : b.id === settings.workspace.id ? 1 : b.items[0].updatedAt.localeCompare(a.items[0].updatedAt)));
+    return groups;
+  }, [sessions, settings.workspace.id]);
+  const wsShort = (p: string) => p.split(/[\\/]/).filter(Boolean).pop() || p;
 
   const [openPaths, setOpenPaths] = useState<string[]>([]);
   const [contents, setContents] = useState<Record<string, string>>({});
@@ -589,7 +603,15 @@ interface RequestRow { eventId: string; requestId: string; at: number; messageCo
     return true;
   };
   const newSession = (): boolean => resetSession(newId('ses'));
-  const openSavedSession = (item: SessionItem) => { if (item.id !== sessionIdRef.current) resetSession(item.id); };
+  const openSavedSession = (item: SessionItem) => {
+    if (item.id === sessionIdRef.current) return;
+    // Opening a session from another workspace moves the whole UI there too,
+    // so its files, runs and verification follow the chat.
+    if (item.workspaceId && item.workspaceId !== settings.workspace.id && item.workspacePath) {
+      setSettings((s) => ({ ...s, workspace: { id: item.workspaceId, path: item.workspacePath } }));
+    }
+    resetSession(item.id);
+  };
   const patchSession = async (id: string, patch: Record<string, unknown>) => {
     const r = await fetch('/api/sessions', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, ...patch }) });
     const d = await r.json(); if (!d.ok) { setError(d.error || 'Could not update session.'); return; } setEditingSessionId(''); await loadSessions();
@@ -826,7 +848,7 @@ interface RequestRow { eventId: string; requestId: string; at: number; messageCo
             <button className="btn primary" disabled={sending.current || branchBusy} onClick={newSession}>New session</button>
             {deletedSession && <div role="status" className="hint" style={{ margin: '10px 0' }}>Deleted {deletedSession.title}. <button className="btn sm" disabled={sessionDeleteBusy} onClick={undoDeleteChat}>Undo delete</button></div>}
             <p className="hint">{history.length || currentTask ? 'Same session: replies continue the selected chat.' : 'New session: your next message starts a chat.'}</p>
-            <input aria-label="Search chats" value={sessionSearch} onChange={(e) => { setSessionSearch(e.target.value); }} placeholder="Search chats" />{sessions.length === 0 && <div className="hint">{sessionSearch ? 'No chats match your search.' : settings.workspace.id ? 'No saved chats in this workspace yet.' : 'Choose a workspace to see its chats.'}</div>}{sessions.map((item) => <div className={'session-row' + (item.id === sessionId ? ' active' : '')} key={item.id}>{deleteSessionId === item.id ? <><b>Delete this session?</b><p className="hint">{item.title}<br />Project files are kept. You can undo this.</p><div className="session-actions"><button className="btn danger sm" disabled={running || sessionDeleteBusy} onClick={() => deleteChat(item)}>{sessionDeleteBusy ? 'Deleting…' : 'Delete chat'}</button><button className="btn sm" disabled={sessionDeleteBusy} onClick={() => setDeleteSessionId('')}>Cancel</button></div></> : editingSessionId === item.id ? <><input aria-label="Session title" value={editingSessionTitle} onChange={(e) => setEditingSessionTitle(e.target.value)} /><div className="session-actions"><button className="btn sm primary" onClick={() => patchSession(item.id, { title: editingSessionTitle })}>Save</button><button className="btn sm" onClick={() => setEditingSessionId('')}>Cancel</button></div></> : <><button className="session-open" disabled={sending.current || branchBusy} aria-current={item.id === sessionId ? 'page' : undefined} onClick={() => openSavedSession(item)}><b>{item.pinned ? '★ ' : ''}{item.title}</b><span>{item.turnCount} turn{item.turnCount === 1 ? '' : 's'} · {new Date(item.updatedAt).toLocaleString()}</span></button><div className="session-actions"><button className="btn sm" onClick={() => patchSession(item.id, { pinned: !item.pinned })}>{item.pinned ? 'Unpin' : 'Pin'}</button><button className="btn sm" onClick={() => { setEditingSessionId(item.id); setEditingSessionTitle(item.title); }}>Rename</button><button className="btn danger sm" disabled={running || sessionDeleteBusy} onClick={() => setDeleteSessionId(item.id)}>Delete</button></div></>}</div>)}
+            <input aria-label="Search chats" value={sessionSearch} onChange={(e) => { setSessionSearch(e.target.value); }} placeholder="Search chats" />{sessions.length === 0 && <div className="hint">{sessionSearch ? 'No chats match your search.' : 'No saved chats yet.'}</div>}{groupedSessions.map((g) => <div key={g.id}>{groupedSessions.length > 1 && <div className="hint session-ws-head" title={g.path}>{wsShort(g.path)}{g.id === settings.workspace.id ? ' · current' : ''}</div>}{g.items.map((item) => <div className={'session-row' + (item.id === sessionId ? ' active' : '')} key={item.id}>{deleteSessionId === item.id ? <><b>Delete this session?</b><p className="hint">{item.title}<br />Project files are kept. You can undo this.</p><div className="session-actions"><button className="btn danger sm" disabled={running || sessionDeleteBusy} onClick={() => deleteChat(item)}>{sessionDeleteBusy ? 'Deleting…' : 'Delete chat'}</button><button className="btn sm" disabled={sessionDeleteBusy} onClick={() => setDeleteSessionId('')}>Cancel</button></div></> : editingSessionId === item.id ? <><input aria-label="Session title" value={editingSessionTitle} onChange={(e) => setEditingSessionTitle(e.target.value)} /><div className="session-actions"><button className="btn sm primary" onClick={() => patchSession(item.id, { title: editingSessionTitle })}>Save</button><button className="btn sm" onClick={() => setEditingSessionId('')}>Cancel</button></div></> : <><button className="session-open" disabled={sending.current || branchBusy} aria-current={item.id === sessionId ? 'page' : undefined} onClick={() => openSavedSession(item)}><b>{item.pinned ? '★ ' : ''}{item.title}</b><span>{item.turnCount} turn{item.turnCount === 1 ? '' : 's'} · {new Date(item.updatedAt).toLocaleString()}</span></button><div className="session-actions"><button className="btn sm" onClick={() => patchSession(item.id, { pinned: !item.pinned })}>{item.pinned ? 'Unpin' : 'Pin'}</button><button className="btn sm" onClick={() => { setEditingSessionId(item.id); setEditingSessionTitle(item.title); }}>Rename</button><button className="btn danger sm" disabled={running || sessionDeleteBusy} onClick={() => setDeleteSessionId(item.id)}>Delete</button></div></>}</div>)}</div>)}
           </section> : <FileTree workspaceId={settings.workspace.id} refreshKey={refreshKey} activePath={activePath} onOpen={openFile} />}
         </aside>}
         {leftOpen && <div className="drag-handle" role="separator" tabIndex={0} aria-orientation="vertical" aria-label="Resize sidebar" aria-valuenow={leftW} aria-valuemin={160} aria-valuemax={520} onMouseDown={onDragStart('left')} onKeyDown={onKeyDownHandle('left')} title="drag to resize; ArrowLeft/Right adjust" />}

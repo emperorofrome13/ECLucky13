@@ -1,8 +1,29 @@
 # ECLucky13 — HANDOFF
 
-**Current version:** v1.30 (package 1.0.30)
+**Current version:** v1.31 (package 1.0.31)
 **Date:** 2026-09-21
-**Status:** Parallel sessions verified; reattach hardened; inspector tabs fixed. Supersedes v1.29.
+**Status:** Sessions sidebar spans all workspaces. Supersedes v1.30.
+
+## v1.31 all-workspace sessions (this increment)
+
+- Symptom: starting a session in a new workspace hid the old sessions — the
+  sidebar filtered by the current workspace, so switching back and forth was
+  impossible in the GUI.
+- Fix: the sidebar now lists ALL sessions grouped by workspace (current
+  workspace first, folder-name headers with full path on hover). Opening a
+  session from another workspace moves the whole UI there too (workspace chip,
+  files, runs follow the chat). The server already listed globally; the filter
+  was purely client-side. `/api/sessions` view now also carries
+  `workspacePath` so the UI can switch context on open.
+- Files: components/Ec12App.tsx (global list, grouping, cross-workspace open),
+  app/api/sessions/route.ts (workspacePath in view), app/globals.css (group
+  header), test/v130-sessions.test.mjs (coexist + global/scope list contract).
+
+## Verification evidence (v1.31)
+
+- New test: **1/1**. Full suite serial: **190/190**. Typecheck PASS, build PASS.
+  CPU-only verification (no model/browser runs; GPU left alone).
+- NOTE: relaunch quickstart to serve v1.31 (auto-rebuilds).
 
 ## v1.30 parallel sessions + inspector fixes (this increment)
 

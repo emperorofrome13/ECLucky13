@@ -431,6 +431,7 @@ legend { font-size: 10px; text-transform: uppercase; letter-spacing: 0.16em; col
 /* Keep the requested chat controls discoverable without covering the workbench. */
 .sidebar-tabs { display: flex; gap: 6px; padding: 8px; border-bottom: 1px solid var(--line); flex: 0 0 auto; }
 .sidebar-tabs .btn { min-height: 40px; font-size: 14px; }
+.session-ws-head { padding: 8px 10px 2px; font-weight: 700; }
 .session-sidebar { padding: 10px; overflow-y: auto; min-height: 0; }
 .session-sidebar > .btn, .session-sidebar > input { width: 100%; }
 .session-sidebar > input { margin-bottom: 12px; font-size: 14px; }
