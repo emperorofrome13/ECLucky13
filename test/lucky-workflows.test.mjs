@@ -358,6 +358,7 @@ test('main-loop ProgressGuard blocks a duplicate-success loop (identical success
   const outcome = await loop.runMainLoop({
     provider, signal: new AbortController().signal, contextWindow: 32000, requestedMaxTokens: 1000,
     maxIterations: 0, repeatedFailureLimit: 3, noProgressTurnLimit: 0, duplicateObservationLimit: 2,
+    blockRecoveryAttempts: 0, // isolate the guard: v1.28 recovery would continue first
     autoCompact: true, autoCompactAtPercent: 80, keepRecentTurns: 4,
     contextTools: {}, journalEnv: { workspacePath: root, runId: 'lucky', sessionId: 'lucky', reviewMode: false },
     systemBlocks: ['Fixture instructions'], task: 'read the file', conversation: c, emit: () => {},

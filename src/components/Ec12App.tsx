@@ -16,7 +16,7 @@ import AttachmentList, { recordAttachments, type UIAttachment } from './Attachme
 import TaskBoard, { type TaskRun, isActiveTask } from './TaskBoard';
 import LuckyPanel from './LuckyPanel';
 
-export const APP_VERSION = '1.27';
+export const APP_VERSION = '1.28';
 const SKEY = 'eclucky13.settings.v1';
 
 function newId(p: string) { return p + '_' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36); }

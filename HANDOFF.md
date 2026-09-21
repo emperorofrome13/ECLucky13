@@ -1,8 +1,29 @@
 # ECLucky13 — HANDOFF
 
-**Current version:** v1.27 (package 1.0.27)
+**Current version:** v1.28 (package 1.0.28)
 **Date:** 2026-09-21
-**Status:** Blocked runs explain themselves and leave a failure memo. Supersedes v1.26.
+**Status:** Stuck runs recover in-loop instead of stopping. Supersedes v1.27.
+
+## v1.28 recover, don't stop (this increment)
+
+- Per decision ("models are smart enough to fix what blocks them"): when the
+  watchdog fires, the run no longer stops. It gets a SYSTEM message with the
+  stall pattern, the failing tool and its last error, plus a diagnose-first
+  directive — then continues with a reset guard. Bounded by the new
+  `agent.blockRecoveryAttempts` setting (default 2, 0 = block at once, max 10),
+  so a truly hopeless loop still ends after N recoveries with the v1.27
+  explanation + failure memo. Past observations are kept across the reset, so an
+  immediately repeated identical call still counts as no progress.
+- Iteration-budget exhaustion stays terminal (a real budget end, not a stall).
+- Files: agent/loop.ts (ProgressGuard.reset, recovery branch), shared/
+  settings-schema.ts (blockRecoveryAttempts), runs/manager.ts (plumbs the
+  setting), test/v128-recover.test.mjs (3 tests: stuck run continues then
+  blocks, self-fix completes, defaults/bounds).
+
+## Verification evidence (v1.28)
+
+- New tests: **3/3**. Full suite serial: **187/187**. Typecheck PASS, build PASS.
+- NOTE: relaunch quickstart to serve v1.28 (auto-rebuilds).
 
 ## v1.27 unblocked (this increment)
 

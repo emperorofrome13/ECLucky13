@@ -559,6 +559,7 @@ private recovered = false;
       protocolRecoveryAttempts: settings.agent.protocolRecoveryAttempts,
       noProgressTurnLimit: settings.agent.noProgressTurnLimit,
       repeatedFailureLimit: settings.agent.repeatedFailureLimit,
+      blockRecoveryAttempts: settings.agent.blockRecoveryAttempts,
     };
     const outcome = await runMainLoop({
       runId: record.id, sessionId: record.sessionId, workspace: record.workspacePath, mode: record.mode, signal,

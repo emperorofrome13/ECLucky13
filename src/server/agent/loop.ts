@@ -72,6 +72,10 @@ class ProgressGuard {
     this.failureLimit = failureLimit; this.stallLimit = stallLimit; this.duplicateLimit = duplicateLimit;
   }
   begin() { this.success = false; this.fresh = false; }
+  /** Block recovery: forget the accumulated failure counts so the run gets a clean
+   * attempt after being told what is wrong. Past observations are kept, so an
+   * immediately repeated identical turn still counts as no progress. */
+  reset() { this.failures.clear(); this.stalled = 0; this.duplicates = 0; this.success = false; this.fresh = false; }
   observe(name: string, args: string, result: ToolResult): string | undefined {
     if (!result.ok) {
       const key = name + ':' + (result.error || '').slice(0, 120);
@@ -112,6 +116,8 @@ export interface LoopDeps {
   turnRecoveryAttempts?: number;
   /** Consecutive all-failing turns allowed before blocking (0 disables the watchdog). */
   noProgressTurnLimit?: number;
+  /** Times a stuck run is handed its block info and continues instead of stopping (0 = block at once). */
+  blockRecoveryAttempts?: number;
   duplicateObservationLimit?: number;
   maxRequestAttempts?: number;
   outputContinuationLimit?: number;
@@ -186,6 +192,8 @@ export async function runMainLoop(deps: LoopDeps): Promise<LoopOutcome> {
   let cutoffRecovery = 0;        // output-limit continuations used this run
   let invalidRecovery = 0;       // malformed-tool-call recoveries used this run
   let turnRetries = 0;           // stream-error re-requests for the CURRENT turn
+  let blockRecoveries = 0;       // stuck-pattern recoveries used this run
+  const maxBlockRecoveries = Math.min(Math.max(0, deps.blockRecoveryAttempts ?? 2), 10);
 
   const turnRetryBudget = Math.min(Math.max(0, deps.turnRecoveryAttempts ?? 3), Math.max(0, (deps.maxRequestAttempts ?? 4) - 1));
   const MAX_CUTOFF_RECOVERY = deps.outputContinuationLimit ?? 4;
@@ -353,6 +361,22 @@ export async function runMainLoop(deps: LoopDeps): Promise<LoopOutcome> {
     }
     stallReason ||= progress.end();
     if (stallReason) {
+      // The model is smart enough to fix what blocks it when told plainly: hand it
+      // the block info and let the run continue. Only when the recoveries are spent
+      // does the run actually stop (with the failure memo for the next run).
+      if (blockRecoveries < maxBlockRecoveries) {
+        blockRecoveries++;
+        const tool = lastFail?.name || 'unknown tool';
+        const err = (lastFail?.error || 'no error text captured').slice(0, 500);
+        deps.conversation.messages.push({ role: 'user', content:
+          `SYSTEM: You are going in circles and I am stepping in instead of stopping the run (recovery ${blockRecoveries}/${maxBlockRecoveries}).\n` +
+          `Stall pattern: ${stallReason}\nFailing tool: ${tool}.\nLast error: ${err}\n` +
+          `Diagnose BEFORE your next tool call: re-read that error, run one small probe if needed, fix quoting/paths/arguments, or take a genuinely different approach. ` +
+          `Do NOT emit the same failing call unchanged — that is what triggered this. If the task itself is impossible as stated, say so plainly instead of looping.` });
+        emit('error', { message: `Stuck pattern (${stallReason}). Recovery ${blockRecoveries}/${maxBlockRecoveries}: block info sent back to the model, run continues.`, fatal: false });
+        progress.reset();
+        continue;
+      }
       emit('error', { message: stallReason, fatal: true });
       return { content, cancelled: false, exhausted: false, blocked: true, error: stallReason, blockedTool: lastFail?.name, lastError: lastFail?.error, productivelyChanged, usage, turns: turns + 1 };
     }

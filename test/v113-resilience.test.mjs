@@ -126,7 +126,8 @@ test('no-progress watchdog blocks a varied-failure loop but any success resets i
     toolCalls: [{ name: 'read_file', args: { path: `missing-${i}.txt` } }],
   }));
   const provider = fakeProvider(responses);
-  const { deps } = baseDeps(provider, { noProgressTurnLimit: 5 });
+  // blockRecoveryAttempts: 0 isolates the watchdog (v1.28 recovery would continue first).
+  const { deps } = baseDeps(provider, { noProgressTurnLimit: 5, blockRecoveryAttempts: 0 });
   const outcome = await loop.runMainLoop(deps);
   assert.equal(outcome.blocked, true);
   assert.match(outcome.error || '', /No progress/);
