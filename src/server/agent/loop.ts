@@ -137,6 +137,10 @@ export interface LoopOutcome {
   exhausted: boolean;
   blocked: boolean;
   error?: string;
+  /** Tool whose repeated failure triggered the block (if any). */
+  blockedTool?: string;
+  /** Last tool error text at block time, truncated (if any). */
+  lastError?: string;
   productivelyChanged: boolean;
   usage: TokenUsage;
   turns: number;
@@ -175,6 +179,9 @@ export async function runMainLoop(deps: LoopDeps): Promise<LoopOutcome> {
   let exhausted = false;
   let blocked = false;
   let productivelyChanged = false;
+  // Last failing tool call this run (name + error). Surfaced on blocked/exhausted
+  // outcomes so the run can explain itself and the next run can avoid repeating it.
+  let lastFail: { name: string; error: string } | null = null;
   let emptyRecovery = 0;
   let cutoffRecovery = 0;        // output-limit continuations used this run
   let invalidRecovery = 0;       // malformed-tool-call recoveries used this run
@@ -335,6 +342,7 @@ export async function runMainLoop(deps: LoopDeps): Promise<LoopOutcome> {
       }
 
       deps.conversation.messages.push({ role: 'tool', tool_call_id: call.id, content: result.ok ? result.output : 'ERROR: ' + (result.error || 'tool failed') + (result.output ? '\n' + result.output : '') });
+      if (!result.ok) lastFail = { name: call.name, error: (result.error || result.output || 'tool failed').slice(0, 600) };
       if (call.name === 'attempt_completion' && result.ok && calls.length === 1) {
         content = result.output; emit('assistant.delta', { text: content });
         deps.conversation.messages.push({ role: 'assistant', content });
@@ -346,7 +354,7 @@ export async function runMainLoop(deps: LoopDeps): Promise<LoopOutcome> {
     stallReason ||= progress.end();
     if (stallReason) {
       emit('error', { message: stallReason, fatal: true });
-      return { content, cancelled: false, exhausted: false, blocked: true, error: stallReason, productivelyChanged, usage, turns: turns + 1 };
+      return { content, cancelled: false, exhausted: false, blocked: true, error: stallReason, blockedTool: lastFail?.name, lastError: lastFail?.error, productivelyChanged, usage, turns: turns + 1 };
     }
 
     deps.conversation.updatedAt = new Date().toISOString();
@@ -354,7 +362,7 @@ export async function runMainLoop(deps: LoopDeps): Promise<LoopOutcome> {
   }
 
   // Exhausted the iteration budget without completing. NOT success.
-  return { content, cancelled: false, exhausted: true, blocked: false, productivelyChanged, usage, turns };
+  return { content, cancelled: false, exhausted: true, blocked: false, blockedTool: lastFail?.name, lastError: lastFail?.error, productivelyChanged, usage, turns };
 }
 
 function handleStreamEvent(ev: StreamEvent, h: { emit: Emit; usage: TokenUsage; onContent: (t: string) => void; onReasoning?: (t: string) => void; onUsage?: (u: TokenUsage, scope?: EventScope) => void; onFirstToken?: () => void; toolDeltas: Array<{ index: number; id?: string; name?: string; argsDelta?: string }>; onError: (m: string) => void }) {

@@ -1,8 +1,37 @@
 # ECLucky13 — HANDOFF
 
-**Current version:** v1.26 (package 1.0.26)
-**Date:** 2026-09-20
-**Status:** Lucky theme (craps + live odds) shipped. Supersedes v1.25.
+**Current version:** v1.27 (package 1.0.27)
+**Date:** 2026-09-21
+**Status:** Blocked runs explain themselves and leave a failure memo. Supersedes v1.26.
+
+## v1.27 unblocked (this increment)
+
+- Symptom: remote-model sessions (e.g. `z-ai/glm-5.3-flash` in `E:\aiprojects\nf mem3`)
+  re-ran failing shell commands until the watchdog blocked the run, ending with an
+  empty reply ("did not record reply text") — felt like the session died. Typing
+  "continue" repeated the same doomed commands into another block.
+- The watchdog still blocks (cost control unchanged: same-signature limit 3, stall
+  limit 20 turns). What changed is what happens at the block:
+  1. **Blocked runs speak.** The loop now carries `blockedTool` + `lastError` on
+     blocked/exhausted outcomes; the manager appends an actionable message to the
+     reply (cause, failing tool, last error, concrete next steps) and streams it
+     into chat. A blocked run can never end silent again.
+  2. **Session failure memo.** A blocked run stores `{tool, reason, lastError}` on
+     the session; the next run in that session gets it as a prominent system
+     instruction ("do NOT repeat the same failing call unchanged: diagnose first,
+     try a different approach, or ask the user"). Cleared on the next succeeded
+     run; naturally scoped (new sessions start clean).
+- Files: agent/loop.ts (LoopOutcome + lastFail tracking), runs/manager.ts
+  (SessionRecord.failureMemo, buildBlockedMessage, buildFailureMemoText, wiring),
+  test/v127-unblocked.test.mjs (5 tests, incl. a real stuck-provider loop run).
+
+## Verification evidence (v1.27)
+
+- New tests: **5/5** (`test/v127-unblocked.test.mjs`).
+- Full suite serial: **184/184** (`--test-concurrency=1`; the v114 timing test
+  flakes under parallel load, pre-existing).
+- `npm.cmd run typecheck -- --incremental false`: PASS. `npm.cmd run build`: PASS.
+- NOTE: relaunch quickstart to serve v1.27 (auto-rebuilds).
 
 ## v1.26 lucky theme (this increment)
 

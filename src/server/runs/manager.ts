@@ -9,7 +9,7 @@ import { resolveInWorkspace } from '../workspace/path-policy';
 import { eventStore } from '../events';
 import { assertTransition } from './state-machine';
 import { compactConversation, newConversation, estimateTokens, resolveReasoningReplay, type Conversation } from '../agent/context-manager';
-import { runMainLoop, runStageWithRepair, type Emit, type EventScope } from '../agent/loop';
+import { runMainLoop, runStageWithRepair, type Emit, type EventScope, type LoopOutcome } from '../agent/loop';
 import { OpenAICompatProvider } from '../providers/openai-compatible';
 import { discoverModels, getCatalog, getLoadedModels, resolveEffectiveModel, providerKind, isLocal } from '../providers/model-discovery';
 import { discoverChecks } from '../verification/discover';
@@ -51,6 +51,12 @@ export interface SessionRecord {
   deletedAt?: string;
   createdAt: string;
   updatedAt: string;
+  /**
+   * Failure memo: set when a run ends blocked by repeated tool failure, cleared
+   * on the next succeeded run. Injected into the next run's context so the model
+   * does not blindly repeat the same doomed commands ("continue" → blocked again).
+   */
+  failureMemo?: { tool: string; reason: string; lastError: string; runId: string; at: string };
 }
 
 export interface RunRecord {
@@ -101,6 +107,33 @@ export function branchSession(sessionId: string, input: { runId: string; task?: 
 
 export function loadSession(id: string): SessionRecord | undefined { return readJson<SessionRecord | undefined>(sessionFile(id), undefined); }
 export function saveSession(s: SessionRecord) { s.updatedAt = new Date().toISOString(); writeJsonAtomic(sessionFile(s.id), s); }
+
+export type FailureMemo = NonNullable<SessionRecord['failureMemo']>;
+
+/**
+ * User-visible message for a blocked/exhausted run. A blocked run must never end
+ * silent: the message names the cause, the failing tool and its last error, and
+ * lists the concrete ways forward. The session stays alive — this is a stop to
+ * save tokens, not a death.
+ */
+export function buildBlockedMessage(o: LoopOutcome): string {
+  const cause = o.exhausted ? 'the iteration budget ran out' : (o.error || 'repeated tool failures');
+  const lines = [
+    `I stopped ${o.exhausted ? 'because ' + cause : 'to save your tokens: ' + cause} after ${o.turns} turn${o.turns === 1 ? '' : 's'}.`,
+  ];
+  if (o.blockedTool) lines.push(`Failing tool: ${o.blockedTool}.`);
+  if (o.lastError) lines.push(`Last error:\n${o.lastError.slice(0, 600)}`);
+  lines.push('The session is still open. Ways forward: fix the failing command and say "continue", ask me to take a different approach, or paste the error output so we can diagnose it together. I will not repeat the same failing call unchanged.');
+  return lines.join('\n\n');
+}
+
+/** System-context reminder injected into the run after a blocked run. */
+export function buildFailureMemoText(m: FailureMemo): string {
+  return `SYSTEM (previous run was blocked — do not ignore this): run ${m.runId} stopped because: ${m.reason}. `
+    + `Failing tool: ${m.tool}. Last error: ${m.lastError.slice(0, 600)}. `
+    + `Do NOT repeat the same failing call unchanged: first diagnose (read the error, run a smaller probe, check quoting/paths), or take a different approach, or ask the user. `
+    + `Repeating the identical failing command will block this run again.`;
+}
 
 // Request events fire three times per model request (started/usage/finished); rewriting
 // the whole session file synchronously each time blocked the agent loop for seconds
@@ -501,6 +534,7 @@ private recovered = false;
       contextTools.skills ? buildSkillsIndex() : '',
       contextToolPrompts(contextTools),
       `MODE: ${record.mode}${record.mode === 'ask' ? ' — answer only; you cannot modify files.' : record.mode === 'plan' ? ' — inspect and propose a plan; you cannot modify files.' : ' — implement and verify.'}`,
+      ...(session.failureMemo ? [buildFailureMemoText(session.failureMemo)] : []),
     ];
 
     this.setState(record, 'generating');
@@ -553,8 +587,18 @@ private recovered = false;
     saveRun(record);
 
     if (outcome.cancelled || signal.aborted) { this.finish(record, 'cancelled', { error: 'Cancelled.' }); return; }
-    if (outcome.blocked) { this.finishSuccess(record, session, effective, [], null, 'blocked', [], outcome.error || 'Blocked after repeated failures.'); return; }
-    if (outcome.exhausted) { this.finishSuccess(record, session, effective, [], null, 'blocked', [], 'Iteration budget exhausted before completion.'); return; }
+    if (outcome.blocked || outcome.exhausted) {
+      // A blocked run is a token-saving stop, not a death: explain itself in chat,
+      // and leave a failure memo so the next run in this session does not repeat it.
+      const reason = outcome.blocked ? (outcome.error || 'Blocked after repeated failures.') : 'Iteration budget exhausted before completion.';
+      session.failureMemo = { tool: outcome.blockedTool || 'unknown tool', reason, lastError: (outcome.lastError || '').slice(0, 600), runId: record.id, at: new Date().toISOString() };
+      const message = buildBlockedMessage(outcome);
+      emit('assistant.delta', { text: message });
+      record.finalText = ((outcome.content ? outcome.content + '\n\n' : '') + message).slice(0, 12000);
+      saveRun(record); saveSession(session);
+      this.finishSuccess(record, session, effective, [], null, 'blocked', [], reason);
+      return;
+    }
     if (outcome.error) { this.finish(record, 'failed', { error: outcome.error }); return; }
 
     // ask/plan: a natural-language answer is the deliverable.
@@ -653,6 +697,9 @@ private recovered = false;
         .concat(stages.filter((s) => !s.passed).map((s) => `Stage ${s.stage} failed: ${s.summary}`)),
       howToRun: 'See the workspace README or package.json scripts.',
     };
+    // A success proves the previous failure is behind us: drop the failure memo so
+    // later runs are not nagged about a problem that is already fixed.
+    if (summary.outcome === 'succeeded' && session.failureMemo) { delete session.failureMemo; saveSession(session); }
     this.finish(record, summary.outcome, { summary });
   }
 
