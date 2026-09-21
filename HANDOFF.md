@@ -1,8 +1,25 @@
 # ECLucky13 — HANDOFF
 
-**Current version:** v1.31 (package 1.0.31)
+**Current version:** v1.32 (package 1.0.32)
 **Date:** 2026-09-21
-**Status:** Sessions sidebar spans all workspaces. Supersedes v1.30.
+**Status:** "Connection lost" false alarm fixed. Supersedes v1.31.
+
+## v1.32 connection alarm (this increment)
+
+- Symptom: statusbar stuck on "Connection lost — reconnecting" while the run
+  was actually working. Two defects in the 3s run poller: (1) a SINGLE slow
+  poll (8s timeout tripping on a busy main thread under a heavy run) raised the
+  alarm; (2) a later successful poll never cleared it.
+- Fix: the alarm needs 3 consecutive failed polls (~9s of real outage), and the
+  next success clears it (real run errors still overwrite it after the clear).
+  Live stage/phase events were never affected and keep arriving throughout.
+- Files: components/Ec12App.tsx (poller only).
+
+## Verification evidence (v1.32)
+
+- Full suite serial: **190/190**. Typecheck PASS, build PASS.
+  CPU-only verification (no model/browser runs; GPU left alone).
+- NOTE: relaunch quickstart to serve v1.32 (auto-rebuilds).
 
 ## v1.31 all-workspace sessions (this increment)
 

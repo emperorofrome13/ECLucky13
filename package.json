@@ -1,6 +1,6 @@
 {
   "name": "eclucky13",
-  "version": "1.0.31",
+  "version": "1.0.32",
   "private": true,
   "description": "ECLucky13 - reliable local-first AI coding agent (server-owned runs, streaming, change journal, project-aware verification)",
   "scripts": {

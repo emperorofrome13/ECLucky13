@@ -16,7 +16,7 @@ import AttachmentList, { recordAttachments, type UIAttachment } from './Attachme
 import TaskBoard, { type TaskRun, isActiveTask } from './TaskBoard';
 import LuckyPanel from './LuckyPanel';
 
-export const APP_VERSION = '1.31';
+export const APP_VERSION = '1.32';
 const SKEY = 'eclucky13.settings.v1';
 
 function newId(p: string) { return p + '_' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36); }
@@ -432,6 +432,11 @@ interface RequestRow { eventId: string; requestId: string; at: number; messageCo
     if (!runId) return;
     let disposed = false;
     let busy = false;
+    // Consecutive failed polls. One slow poll under load is normal (busy main
+    // thread, GC pause) — the alarm only shows after a sustained outage, and a
+    // single success clears it again.
+    let misses = 0;
+    let alarmed = false;
     const generation = runGeneration.current;
     const valid = () => !disposed && runIdRef.current === runId && generation === runGeneration.current;
     const refresh = async () => {
@@ -442,10 +447,19 @@ interface RequestRow { eventId: string; requestId: string; at: number; messageCo
         const r = await fetch(`/api/runs/${runId}`, { signal: AbortSignal.timeout(8000) });
         const d = await r.json();
         if (!valid() || !d.ok || d.run?.id !== runId || sequence !== lastSeq.current) return;
+        misses = 0;
+        if (alarmed) { alarmed = false; setRunDetail(''); }
         setRunState(d.run.state);
         if (d.run.error) setRunDetail(d.run.error);
         if (d.run.summary) setSummary(d.run.summary);
-      } catch { if (valid()) setRunDetail('Connection lost — reconnecting. The task may still be running.'); }
+      } catch {
+        if (!valid()) return;
+        misses++;
+        if (misses >= 3 && !alarmed) {
+          alarmed = true;
+          setRunDetail('Connection lost — reconnecting. The task may still be running.');
+        }
+      }
       finally { busy = false; }
     };
     void refresh();
